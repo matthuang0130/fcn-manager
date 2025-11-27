@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Clean Fix v48)
- * Fix: 補回遺失的 ClientManagerModal 元件定義
- * Update: 徹底移除 JSON/Code 相關功能，僅保留「連結分享」
- * Update: Storage Key v48
+ * FCN 投資組合管理系統 (Stable Production Version)
+ * Note: 這是正式上線版本，已鎖定 Storage Key 以確保資料不流失
  */
 
 // --- 1. Constants ---
@@ -30,12 +28,14 @@ const DEFAULT_FORM_STATE = {
   koObservationStartDate: "", tenor: "6 個月", maturityDate: ""
 };
 
-const KEY_POSITIONS = 'fcn_positions_v48'; 
-const KEY_PRICES = 'fcn_market_prices_v48';
-const KEY_CLIENTS = 'fcn_clients_v48';
-const KEY_UPDATE_DATE = 'fcn_last_update_date_v48';
-const KEY_SHEET_ID = 'fcn_google_sheet_id_v48';
-const KEY_PASSWORD = 'fcn_admin_password_v48'; 
+// --- ⚠️ 重要：請勿修改以下 Key 值，否則用戶資料會重置 ⚠️ ---
+const KEY_POSITIONS = 'fcn_positions_v56'; 
+const KEY_PRICES = 'fcn_market_prices_v56';
+const KEY_CLIENTS = 'fcn_clients_v56';
+const KEY_UPDATE_DATE = 'fcn_last_update_date_v56';
+const KEY_SHEET_ID = 'fcn_google_sheet_id_v56';
+const KEY_PASSWORD = 'fcn_admin_password_v56'; 
+// ----------------------------------------------------------
 
 // --- 2. Helpers ---
 
@@ -254,19 +254,55 @@ const BatchPriceModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLa
   const [pasteContent, setPasteContent] = useState('');
   const [inputUrl, setInputUrl] = useState('');
   const [status, setStatus] = useState('');
-  const parseSheetId = (url) => { const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/); return match ? match[1] : (url.length > 20 && !url.includes('/') ? url : null); };
+  
+  // Enhanced ID Parser
+  const parseSheetId = (url) => { 
+      const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/); 
+      return match ? match[1] : (url.length > 20 && !url.includes('/') ? url : null); 
+  };
+
   const handlePaste = () => {
     const lines = pasteContent.split('\n'); const newPrices = { ...marketPrices }; let count = 0;
     lines.forEach(line => { const match = line.replace(/[¥$,JPY"\s]/g, '').match(/([A-Za-z0-9.:]+)[^\d-]*([\d.,]+)/); if(match) { const t = match[1].toUpperCase().replace("TYO:","").replace(".T",""); const p = parseFloat(match[2].replace(/,/g,'')); if(!isNaN(p)) { newPrices[t] = p; count++; } } });
     setMarketPrices(newPrices); localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices)); setLastUpdated(new Date().toLocaleDateString() + " (貼上)"); setStatus(`成功更新 ${count} 筆`); setTimeout(onClose, 1000);
   };
-  const handleSheet = () => { const id = parseSheetId(inputUrl); if(id) { setGoogleSheetId(id); setStatus("ID 已設定，請點擊主畫面同步按鈕"); setTimeout(onClose, 1500); } else { setStatus("無效的連結"); } };
+  
+  const handleSheet = () => { 
+      const id = parseSheetId(inputUrl); 
+      if(id) { 
+          setGoogleSheetId(id); 
+          setStatus("ID 已儲存。請點擊「測試」或回主畫面「同步」。"); 
+      } else { 
+          setStatus("無效的連結"); 
+      } 
+  };
+  
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center z-50 p-4 overflow-y-auto items-start pt-10 sm:items-center sm:pt-0">
       <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-5 mb-10">
         <div className="flex justify-between mb-4 border-b pb-2"><h3 className="font-bold">更新報價</h3><button onClick={onClose}><X/></button></div>
         <div className="flex gap-2 mb-4"><button onClick={()=>setActiveTab('paste')} className={`flex-1 py-2 text-xs rounded ${activeTab==='paste'?'bg-blue-50 text-blue-600 font-bold':'bg-slate-50'}`}>貼上</button><button onClick={()=>setActiveTab('sheet')} className={`flex-1 py-2 text-xs rounded ${activeTab==='sheet'?'bg-blue-50 text-blue-600 font-bold':'bg-slate-50'}`}>Google Sheet</button></div>
-        {activeTab === 'paste' ? (<div className="space-y-3"><textarea className="w-full h-32 border p-2 text-xs font-mono rounded" placeholder="NVDA 800&#10;7203 3500" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/><button onClick={handlePaste} className="w-full bg-blue-600 text-white py-2 rounded text-sm">更新</button></div>) : (<div className="space-y-3"><input className="w-full border p-2 text-xs rounded" placeholder="Google Sheet URL..." value={inputUrl} onChange={e=>setInputUrl(e.target.value)}/><button onClick={handleSheet} className="w-full bg-green-600 text-white py-2 rounded text-sm">設定連結</button><p className="text-[10px] text-slate-400">需先將檔案「發布到網路」為 CSV 格式</p></div>)}
+        {activeTab === 'paste' ? (<div className="space-y-3"><textarea className="w-full h-32 border p-2 text-xs font-mono rounded" placeholder="NVDA 800&#10;7203 3500" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/><button onClick={handlePaste} className="w-full bg-blue-600 text-white py-2 rounded text-sm">更新</button></div>) : (
+            <div className="space-y-3">
+                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 space-y-1">
+                    <p>設定步驟：</p>
+                    <ol className="list-decimal list-inside opacity-80">
+                        <li>Google Sheet 檔案 &gt; 共用 &gt; 發布到網路</li>
+                        <li>格式選擇 <b>CSV</b> (非網頁)</li>
+                        <li>複製該連結貼在下方</li>
+                    </ol>
+                </div>
+                <input className="w-full border p-2 text-xs rounded" placeholder="https://docs.google.com/.../pub?output=csv" value={inputUrl} onChange={e=>setInputUrl(e.target.value)}/>
+                <div className="flex gap-2">
+                    {googleSheetId && (
+                        <a href={`https://docs.google.com/spreadsheets/d/${googleSheetId}/pub?output=csv`} target="_blank" rel="noreferrer" className="flex-1 bg-white border text-slate-600 py-2 rounded text-sm font-bold flex items-center justify-center gap-1 hover:bg-slate-50">
+                            <ExternalLink size={14}/> 測試連結
+                        </a>
+                    )}
+                    <button onClick={handleSheet} className="flex-1 bg-green-600 text-white py-2 rounded text-sm font-bold">儲存設定</button>
+                </div>
+            </div>
+        )}
         {status && <p className="text-center text-xs mt-2 text-blue-600">{status}</p>}
       </div>
     </div>
@@ -278,9 +314,9 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const inputRef = useRef(null);
 
   const handleCopy = (text) => {
-      const success = copyToClipboard(text);
+      const success = copyToClipboard(link);
       if(success) { setCopyStatus("已複製！"); setTimeout(() => setCopyStatus("複製連結"), 2000); }
-      else prompt("請手動複製：", text);
+      else prompt("請手動複製：", link);
   };
 
   if(!isOpen) return null;
@@ -297,10 +333,11 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
             </div>
             
             <div className="space-y-4">
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 mb-3">
                     將此連結傳送給客戶，對方即可在手機上查看即時部位與損益（唯讀模式）。
                 </p>
-                <div className="relative">
+
+                <div className="relative mb-4">
                     <input 
                         ref={inputRef}
                         readOnly 
@@ -309,6 +346,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-3 text-xs text-slate-600 break-all pr-10 focus:ring-2 focus:ring-blue-500"
                     />
                 </div>
+
                 <div className="flex gap-2">
                     <a href={link} target="_blank" rel="noreferrer" className="flex-1 border border-slate-200 text-slate-600 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50">
                         <LinkIcon size={16}/> 測試開啟
@@ -323,7 +361,6 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   );
 };
 
-// ClientManagerModal - The previously missing component, restored and simplified
 const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink }) => {
   const [newName, setNewName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
@@ -355,7 +392,7 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
                 {c.id === activeId && <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 rounded">當前</span>}
               </div>
               <div className="flex gap-1">
-                  <button onClick={() => onGenerateShareLink(c.id)} className="text-slate-300 hover:text-blue-500 p-1" title="分享連結"><Share2 size={14}/></button>
+                  <button onClick={() => onGenerateShareLink(c.id)} className="text-slate-300 hover:text-blue-500 p-1" title="產生分享連結"><Share2 size={14}/></button>
                   <button onClick={() => onDelete(c.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 size={14}/></button>
               </div>
             </div>
@@ -603,7 +640,60 @@ const App = () => {
   }, [processedPositions]);
 
   // --- Action Handlers ---
-  const handleForceUpdate = async () => { setIsLoading(true); await new Promise(r => setTimeout(r, 500)); setMarketPrices(prev => { const next = { ...prev }; activeTickers.forEach(t => { const curr = getPriceForTicker(t) || 100; next[t] = parseFloat((curr * (1 + (Math.random()*0.04 - 0.02))).toFixed(2)); }); return next; }); setLastUpdated(new Date().toLocaleString()); setIsLoading(false); };
+  // FIXED: Force Proxy via AllOrigins
+  const handleSyncGoogleSheet = async () => {
+    if(!googleSheetId) return;
+    setIsLoading(true);
+    
+    // Construct export URL (Shared Link Safe)
+    // Fix: If user pasted a full URL like /edit#gid=0, extract ID first.
+    // But if googleSheetId is just the ID, then use this:
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${googleSheetId}/export?format=csv`;
+    
+    // Always use proxy to bypass CORS on export URLs
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(exportUrl)}`;
+    
+    try {
+      const response = await fetch(proxyUrl);
+      if(!response.ok) throw new Error("Network Error");
+      
+      const text = await response.text();
+      
+      // Check if we got an HTML error page instead of CSV
+      if(text.includes("<!DOCTYPE html") || text.includes("google.com/accounts")) {
+          throw new Error("權限錯誤：請確認連結設為「知道連結的人皆可檢視」");
+      }
+
+      const newPrices = { ...marketPrices };
+      let count = 0;
+      const lines = text.split(/\r?\n/);
+      
+      lines.forEach(row => {
+          const matches = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+          if(matches && matches.length >= 2) {
+              let t = matches[0].replace(/^"|"$/g, '').trim().toUpperCase();
+              t = t.replace("TYO:", "").replace("JP:", "").replace(".T", "");
+              let pStr = matches[1].replace(/^"|"$/g, '').trim();
+              pStr = pStr.replace(/[¥$,JPY"\s]/g, '').replace(/,/g, '');
+              const p = parseFloat(pStr);
+              if(t && !isNaN(p)) { newPrices[t] = p; count++; }
+          }
+      });
+      
+      if(count === 0) throw new Error("解析失敗：未找到有效股價");
+      
+      setMarketPrices(newPrices);
+      localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices));
+      setLastUpdated(new Date().toLocaleString() + " (Sheet)");
+      alert(`同步成功！更新了 ${count} 筆報價。`);
+      
+    } catch(e) {
+      console.error(e);
+      alert(`❌ 同步失敗：${e.message}\n\n請確認：\n1. 連結權限已設為「知道連結的人皆可檢視」\n2. ID 是否正確`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   const handleSavePosition = (e) => {
     e.preventDefault();
@@ -648,6 +738,19 @@ const App = () => {
   const handleOpenAddModal = () => { checkAuth(() => { setEditId(null); setFormPosition(DEFAULT_FORM_STATE); setFormUnderlyings([{ id: Date.now(), ticker: "", entryPrice: 0 }]); setIsAddModalOpen(true); }); };
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx }))); setIsAddModalOpen(true); }); };
 
+  const handleExportCSV = () => {
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "最差標的", "現價", "進場價", "表現(%)", "狀態"];
+    const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
+      const calculated = calculateRisk(pos);
+      const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
+      return [clientName, pos.productName, pos.issuer, pos.currency, pos.nominal, pos.couponRate, pos.maturityDate, pos.kiLevel, pos.koLevel, calculated.laggard.ticker, calculated.laggard.currentPrice, calculated.laggard.entryPrice, calculated.laggard.performance.toFixed(2), calculated.riskStatus];
+    });
+    const csvString = [headers.join(','), ...rows.map(row => row.map(item => `"${String(item).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.href = url; link.setAttribute("download", `FCN_Portfolio.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  };
+
   if (viewMode === 'landing') {
       return <LandingPage onAdminLogin={handleAdminLogin} hasPassword={!!savedPassword}/>;
   }
@@ -677,10 +780,16 @@ const App = () => {
               )}
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
-               <button onClick={() => setIsExportModalOpen(true)} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
+               <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
                {!isGuestMode && (
                    <>
-                    <button onClick={() => checkAuth(() => setIsBatchPriceModalOpen(true))} className="flex-none flex items-center justify-center gap-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><RefreshCw size={16} className={isLoading ? "animate-spin" : ""} /><span className="hidden sm:inline">報價</span><span className="sm:hidden">報價</span></button>
+                    {googleSheetId && (
+                        <button onClick={handleSyncGoogleSheet} className="flex-none flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white border border-green-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap shadow-md">
+                            <CloudDownload size={16} className={isLoading ? "animate-bounce" : ""} />
+                            <span>同步</span>
+                        </button>
+                    )}
+                    <button onClick={() => checkAuth(() => setIsBatchPriceModalOpen(true))} className="flex-none flex items-center justify-center gap-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><RefreshCw size={16} /><span className="hidden sm:inline">報價</span><span className="sm:hidden">報價</span></button>
                     <button onClick={handleOpenAddModal} className="flex-none flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-md whitespace-nowrap"><Plus size={16} /><span className="hidden sm:inline">新增</span><span className="sm:hidden">新增</span></button>
                    </>
                )}
