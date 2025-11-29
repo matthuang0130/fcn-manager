@@ -4,8 +4,9 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
  * Update:
- * 1. URL Shortener: Integrated TinyURL API to shorten share links automatically.
- * 2. Loading State: Added visual feedback when generating the link.
+ * 1. Revert: Underlying Assets display switched back to "List View" (Table) as requested.
+ * 2. Layout: Clean and simple table for Ticker | Current | KO | Strike | KI.
+ * 3. Retained: Card style for Principal/Coupon and Center alignment.
  */
 
 // --- 1. Constants ---
@@ -841,7 +842,6 @@ const App = () => {
   const [currentShareData, setCurrentShareData] = useState({ url: '', name: '' }); 
   const [pendingAction, setPendingAction] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGeneratingShareLink, setIsGeneratingShareLink] = useState(false);
   const [showEmbedSheet, setShowEmbedSheet] = useState(false);
 
   // UI States
@@ -1151,6 +1151,7 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
+    // UPDATED: Added Strike(%) and Strike Price to header
     const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
@@ -1165,11 +1166,11 @@ const App = () => {
           pos.maturityDate, 
           pos.kiLevel, 
           pos.koLevel, 
-          pos.strikeLevel,
+          pos.strikeLevel, // Added
           calculated.laggard.ticker, 
           calculated.laggard.currentPrice, 
           calculated.laggard.entryPrice, 
-          calculated.laggard.strikePrice.toFixed(2),
+          calculated.laggard.strikePrice.toFixed(2), // Added Strike Price
           calculated.laggard.performance.toFixed(2), 
           calculated.riskStatus
       ];
@@ -1307,9 +1308,9 @@ const App = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[800px]">
-                <thead className="bg-slate-50/50 border-b border-slate-200">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr className="text-sm text-slate-600 font-bold">
-                    <th className="px-4 py-3 min-w-[200px]">產品資訊</th>
+                    <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
                     <th className="px-4 py-3 text-center w-40">本金 / 月息</th>
                     <th className="px-4 py-3">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-20">操作</th>
@@ -1323,7 +1324,7 @@ const App = () => {
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               <div className="text-lg font-black text-slate-800 whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
+                               <div className="text-sm font-black text-slate-800 whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col gap-1.5">
@@ -1337,37 +1338,22 @@ const App = () => {
                                      <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
                                      <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
                                  </div>
-
-                                 <div className="mt-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200">
-                                     <div className="grid grid-cols-1 gap-1">
-                                         {pos.underlyingDetails.map(u => (
-                                             <div key={u.ticker} className="flex justify-between items-center text-[10px] font-mono border-b border-slate-100 last:border-0 pb-0.5 mb-0.5">
-                                                 <span className="font-black text-slate-700 w-10">{u.ticker}</span>
-                                                 <div className="flex gap-2">
-                                                     <span className="text-red-700 font-bold w-10 text-right" title="KO Price">${u.koPrice.toFixed(0)}</span>
-                                                     <span className="text-slate-400 w-10 text-right" title="Strike Price">${u.strikePrice.toFixed(0)}</span>
-                                                     <span className="text-green-700 font-bold w-10 text-right" title="KI Price">${u.kiPrice.toFixed(0)}</span>
-                                                 </div>
-                                             </div>
-                                         ))}
-                                     </div>
-                                 </div>
                             </div>
                             <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
                           </td>
                           
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex flex-col items-center justify-center h-full">
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28"> 
-                                    <div className="text-center w-full border-b border-slate-100 pb-3">
-                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span>
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
+                                    <div className="text-center w-full border-b border-slate-100 pb-2"> 
+                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span> 
                                         <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span>
-                                        <div className="text-red-700 font-black text-lg leading-tight truncate w-full">
+                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span> 
+                                        <div className="text-red-700 font-black text-lg leading-tight truncate w-full"> 
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
                                     </div>
@@ -1377,6 +1363,7 @@ const App = () => {
 
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex flex-col gap-1"> 
+                              {/* Table Header */}
                               <div className="grid grid-cols-5 gap-2 text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="text-left">標的</span>
                                   <span className="text-right">現價</span>
@@ -1384,6 +1371,7 @@ const App = () => {
                                   <span className="text-right text-slate-500">履約</span>
                                   <span className="text-right text-green-600">KI</span>
                               </div>
+                              {/* Table Rows */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
                                   <div key={u.ticker} className="grid grid-cols-5 gap-2 items-center text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded">
@@ -1432,4 +1420,4 @@ const App = () => {
   );
 };
 
-export default App;;
+export default App;
