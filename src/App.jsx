@@ -3,11 +3,9 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 
 /**
  * FCN 投資組合管理系統 (Final Stable Version - Traditional Chinese)
- * Features:
- * - Taiwan Stock Color Logic (Red=Up/KO, Green=Down/KI)
- * - List View for Underlyings
- * - "Wan" unit for Principal, Precise integer for Coupon
- * - Auto-balancing layout height
+ * Update:
+ * 1. Layout Alignment: Changed table cells to 'align-middle' for Product Info and Principal/Coupon.
+ * This ensures content is vertically centered regardless of the row height.
  */
 
 // --- 1. Constants ---
@@ -1276,7 +1274,7 @@ const App = () => {
                 <thead className="bg-slate-50/50 border-b border-slate-200">
                   <tr className="text-sm text-slate-600 font-bold">
                     <th className="px-4 py-3 w-64">產品資訊</th>
-                    <th className="px-4 py-3 text-right w-32">本金 / 月息</th>
+                    <th className="px-4 py-3 text-right w-40">本金 / 月息</th>
                     <th className="px-4 py-3">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-20">操作</th>
                   </tr>
@@ -1286,7 +1284,7 @@ const App = () => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
                       return (
                         <tr key={pos.id} className="hover:bg-slate-50 transition group">
-                          <td className="px-4 py-2 align-top"> {/* Reduced padding py-4 -> py-2 */}
+                          <td className="px-4 py-2 align-middle"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
                                <div className="text-lg font-black text-slate-800 truncate max-w-[200px]" title={pos.productName}>{pos.productName}</div>
@@ -1298,7 +1296,6 @@ const App = () => {
                                      <span className="bg-blue-50 px-2 py-0.5 rounded text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
                                  </div>
                                  
-                                 {/* Updated: Simplified Product Info - Only Percentages */}
                                  <div className="flex flex-wrap gap-2 mt-2 text-[11px] font-bold">
                                      <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100">KO {pos.koLevel}%</span>
                                      <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
@@ -1308,18 +1305,18 @@ const App = () => {
                             <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
                           </td>
                           
-                          <td className="px-4 py-2 align-top"> {/* Reduced padding py-4 -> py-2 */}
-                            <div className="flex flex-col gap-4 items-end h-full justify-center">
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-col justify-center items-center gap-1 w-24 h-24">
-                                    <div className="text-center w-full border-b border-slate-100 pb-1">
-                                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">本金</span>
-                                        <div className="text-slate-800 font-black text-sm leading-tight truncate w-full">
+                          <td className="px-4 py-2 align-middle"> 
+                            <div className="flex flex-col items-center justify-center h-full">
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28"> 
+                                    <div className="text-center w-full border-b border-slate-100 pb-3">
+                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span>
+                                        <div className="text-slate-800 font-black text-base leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-[9px] text-red-400 font-bold uppercase tracking-wider block">月息</span>
-                                        <div className="text-red-700 font-black text-sm leading-tight truncate w-full">
+                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span>
+                                        <div className="text-red-700 font-black text-base leading-tight truncate w-full">
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
                                     </div>
@@ -1327,10 +1324,10 @@ const App = () => {
                             </div>
                           </td>
 
-                          <td className="px-4 py-2 align-top"> {/* Reduced padding py-4 -> py-2 */}
-                            <div className="flex flex-col gap-1"> {/* Replaced grid with flex col for table list */}
+                          <td className="px-4 py-2 align-top"> 
+                            <div className="flex flex-col gap-1"> 
                               {/* Table Header */}
-                              <div className="grid grid-cols-5 gap-2 text-[10px] text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                              <div className="grid grid-cols-5 gap-2 text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="text-left">標的</span>
                                   <span className="text-right">現價</span>
                                   <span className="text-right text-red-600">KO</span>
@@ -1340,20 +1337,20 @@ const App = () => {
                               {/* Table Rows */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  <div key={u.ticker} className="grid grid-cols-5 gap-2 items-center text-xs border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded">
-                                    <span className="font-black text-slate-800">{u.ticker}</span>
-                                    <span className={`font-mono font-black text-right ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                  <div key={u.ticker} className="grid grid-cols-5 gap-2 items-center text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded">
+                                    <span className="font-black text-slate-800 text-sm">{u.ticker}</span>
+                                    <span className={`font-mono font-black text-right text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
-                                    <span className="font-mono font-bold text-red-700 text-right text-[11px]">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-400 text-right text-[11px]">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-[11px]">{u.kiPrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-500 text-right text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
                                 );
                               })}
                             </div>
                           </td>
-                          <td className="px-4 py-2 text-right align-top"> {/* Reduced padding */}
+                          <td className="px-4 py-2 text-right align-middle"> 
                             {!isGuestMode && (
                                 <div className="flex flex-col items-end gap-2 h-full justify-center">
                                     <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
