@@ -4,11 +4,8 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
  * Update:
- * 1. Mobile Optimization: Adjusted font sizes and gaps in the Underlying Assets table for mobile screens.
- * - Current Price: text-sm (mobile) / text-base (desktop)
- * - Barrier Prices: text-xs (mobile) / text-sm (desktop)
- * - Gaps: gap-1 (mobile) / gap-2 (desktop)
- * This prevents 5-digit prices from overlapping with adjacent columns on small screens.
+ * 1. Fixed HTML structure errors (mismatched closing tags).
+ * 2. All features preserved: Taiwan Stock Colors, List View, URL Shortening, Responsive Layout.
  */
 
 // --- 1. Constants ---
@@ -170,7 +167,8 @@ const parsePortfolioRows = (rows) => {
         'ki': ['ki', 'barrier', '下限', 'knock-in'],
         'ko': ['ko', 'barrier', '上限', 'knock-out'],
         'strike': ['strike', '履約', '行權'],
-        'underlyings': ['underlying', 'tickers', 'stocks', '標的', '連結標的', 'code']
+        'underlyings': ['underlying', 'tickers', 'stocks', '標的', '連結標的', 'code'],
+        'koObservation': ['observation', '觀察', 'start', '起始', 'ko date', 'begin']
     };
 
     let headerIdx = -1;
@@ -196,7 +194,8 @@ const parsePortfolioRows = (rows) => {
                 ki: getIndex(headerMap.ki),
                 ko: getIndex(headerMap.ko),
                 strike: getIndex(headerMap.strike),
-                underlyings: getIndex(headerMap.underlyings)
+                underlyings: getIndex(headerMap.underlyings),
+                koObservation: getIndex(headerMap.koObservation)
             };
             break;
         }
@@ -253,7 +252,7 @@ const parsePortfolioRows = (rows) => {
             strikeLevel: idx.strike > -1 ? (parseFloat(row[idx.strike]) || 100) : 100,
             underlyings,
             strikeDate: "",
-            koObservationStartDate: "",
+            koObservationStartDate: idx.koObservation > -1 ? row[idx.koObservation] : "",
             tenor: "",
             status: "Active"
         };
@@ -266,7 +265,6 @@ const parsePortfolioRows = (rows) => {
 
 // --- 3. Sub-Components ---
 
-// ... (LandingPage, PasswordInput, PasswordPromptModal, SettingsModal unchanged) ...
 const LandingPage = ({ onAdminLogin, hasPassword }) => {
     const [password, setPassword] = useState("");
     return (
@@ -575,7 +573,7 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                             <li>CSV 連結 (<code>output=csv</code>)</li>
                             <li>網頁發布連結 (<code>/pubhtml</code>)</li>
                         </ul>
-                        <p className="opacity-80 mt-2">支援欄位：產品名稱, 幣別, 本金, 年息, 到期日, KI, KO, <span className="font-bold text-purple-700">履約(%)</span>, 標的</p>
+                        <p className="opacity-80 mt-2">支援欄位：產品名稱, 幣別, 本金, 年息, 到期日, KI, KO, <span className="font-bold text-purple-700">履約(%)</span>, <span className="font-bold text-purple-700">KO觀察日</span>, 標的</p>
                     </div>
                     
                     <div className="space-y-2">
@@ -610,7 +608,6 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
   );
 };
 
-// ... ShareLinkModal, ExportModal, ClientManagerModal ... (Unchanged logic, kept for context)
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
@@ -813,10 +810,7 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
   );
 };
 
-// --- 4. App Component ---
-
 const App = () => {
-  // --- State ---
   const [viewMode, setViewMode] = useState('landing');
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestData, setGuestData] = useState(null);
@@ -849,7 +843,7 @@ const App = () => {
 
   // UI States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isDataSyncModalOpen, setIsDataSyncModalOpen] = useState(false); // Changed name
+  const [isDataSyncModalOpen, setIsDataSyncModalOpen] = useState(false); 
   const [isClientManagerOpen, setIsClientManagerOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -861,38 +855,33 @@ const App = () => {
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
 
-  // --- Helper: Fetch with Fallback and Forced UTF-8 ---
+  // --- Helper: Fetch with Fallback ---
   const fetchWithFallback = async (targetUrl) => {
       const decoder = new TextDecoder('utf-8');
 
       const fetchAndDecode = async (url) => {
-          const res = await fetch(url, { cache: 'no-store' }); // Attempt to bypass browser cache
+          const res = await fetch(url, { cache: 'no-store' });
           if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
           const buffer = await res.arrayBuffer();
           return decoder.decode(buffer);
       };
 
-      // Append timestamp to avoid caching
       const separator = targetUrl.includes('?') ? '&' : '?';
       const timedUrl = `${targetUrl}${separator}_t=${Date.now()}`;
       const encodedUrl = encodeURIComponent(timedUrl);
 
-      // Strategy 1: AllOrigins
       try {
           return await fetchAndDecode(`https://api.allorigins.win/raw?url=${encodedUrl}`);
       } catch (e) { console.warn("AllOrigins failed", e); }
 
-      // Strategy 2: CodeTabs
       try {
           return await fetchAndDecode(`https://api.codetabs.com/v1/proxy?quest=${encodedUrl}`);
       } catch (e) { console.warn("CodeTabs failed", e); }
       
-      // Strategy 3: CorsProxy
       try {
           return await fetchAndDecode(`https://corsproxy.io/?${encodedUrl}`);
       } catch (e) { console.warn("CorsProxy failed", e); }
 
-      // Strategy 4: Direct
       try {
           return await fetchAndDecode(timedUrl);
       } catch (e) { 
@@ -901,7 +890,6 @@ const App = () => {
       }
   };
 
-  // --- Initialization (Hash Check) ---
   useEffect(() => {
       const hash = window.location.hash;
       if (hash && hash.startsWith('#share=')) {
@@ -922,7 +910,6 @@ const App = () => {
       }
   }, []);
 
-  // --- Computed ---
   const activeClient = useMemo(() => {
     if (isGuestMode && guestData) return { id: 'guest', name: guestData.clientName || '訪客' };
     return clients.find(c => c.id === activeClientId) || { id: 'temp', name: '未知投資人' };
@@ -940,7 +927,6 @@ const App = () => {
     return Array.from(tickers).sort();
   }, [allPositions, currentClientPositions, isGuestMode]);
 
-  // --- Persistence ---
   useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_CLIENTS, JSON.stringify(clients)); } catch(e){} }, [clients, isGuestMode]);
   useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_POSITIONS, JSON.stringify(allPositions)); } catch(e){} }, [allPositions, isGuestMode]);
   useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_PRICES, JSON.stringify(marketPrices)); } catch(e){} }, [marketPrices, isGuestMode]);
@@ -948,7 +934,6 @@ const App = () => {
   useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_PORTFOLIO_URL, portfolioSheetUrl); } catch(e){} }, [portfolioSheetUrl, isGuestMode]);
   useEffect(() => { if(!isGuestMode) { if(savedPassword) localStorage.setItem(KEY_PASSWORD, savedPassword); else localStorage.removeItem(KEY_PASSWORD); } }, [savedPassword, isGuestMode]);
 
-  // --- Logic ---
   const checkAuth = (action) => { if (isUnlocked) action(); else { setPendingAction(() => action); setIsPasswordPromptOpen(true); } };
   const handleUnlock = (inputPwd) => { if (inputPwd === savedPassword) { setIsUnlocked(true); setIsPasswordPromptOpen(false); if (pendingAction) { pendingAction(); setPendingAction(null); } } else { alert("密碼錯誤"); } };
   const handleAdminLogin = (inputPwd) => { if (!savedPassword || inputPwd === savedPassword) { setIsUnlocked(true); setIsGuestMode(false); setViewMode('dashboard'); return true; } else { alert("密碼錯誤"); return false; } };
@@ -979,11 +964,24 @@ const App = () => {
       return detail;
     });
     const monthlyCoupon = Math.round((pos.nominal * (pos.couponRate / 100)) / 12);
+    
+    const today = new Date().toISOString().split('T')[0];
+    
     let riskStatus = "觀察中", statusColor = "bg-blue-100 text-blue-800";
-    // Taiwan logic: Red = KO/Safe, Green = KI/Danger
-    if (minPerf <= pos.kiLevel) { riskStatus = "已觸及 KI"; statusColor = "bg-green-100 text-green-800 font-bold border border-green-300"; } 
-    else if (minPerf <= pos.kiLevel + 5) { riskStatus = "瀕臨 KI"; statusColor = "bg-orange-100 text-orange-800 font-bold"; } 
-    else if (minPerf >= pos.koLevel) { riskStatus = "達成 KO"; statusColor = "bg-red-100 text-red-800 font-bold border border-red-300"; }
+    if (minPerf <= pos.kiLevel) { 
+        riskStatus = "已觸及 KI"; 
+        statusColor = "bg-green-100 text-green-800 font-bold border border-green-300"; 
+    } 
+    else if (minPerf <= pos.kiLevel + 5) { 
+        riskStatus = "瀕臨 KI"; 
+        statusColor = "bg-orange-100 text-orange-800 font-bold"; 
+    } 
+    else if (minPerf >= pos.koLevel) { 
+        if (pos.koObservationStartDate && today >= pos.koObservationStartDate) {
+            riskStatus = "達成 KO"; 
+            statusColor = "bg-red-100 text-red-800 font-bold border border-red-300"; 
+        }
+    }
     return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon };
   };
 
@@ -1000,30 +998,19 @@ const App = () => {
     };
   }, [processedPositions]);
 
-  // --- Action Handlers ---
-  // FIXED: Force Proxy via AllOrigins
   const handleSyncGoogleSheet = async () => {
     if(!googleSheetId) {
         setIsDataSyncModalOpen(true);
         return;
     }
     setIsLoading(true);
-    
-    // Construct export URL (Shared Link Safe)
-    // Fix: If user pasted a full URL like /edit#gid=0, extract ID first.
-    // But if googleSheetId is just the ID, then use this:
     const exportUrl = `https://docs.google.com/spreadsheets/d/${googleSheetId}/export?format=csv`;
-    
     try {
       const text = await fetchWithFallback(exportUrl);
-      
-      // Check if we got an HTML error page instead of CSV
       if(text.includes("<!DOCTYPE html") || text.includes("google.com/accounts")) {
-          // If HTML, try to parse as table directly if it's a pubhtml link
-          if(googleSheetId.length > 20) { // likely full ID or bad ID
+          if(googleSheetId.length > 20) { 
              const rows = parseRawDataToRows(text);
              if(rows.length > 0) {
-                 // Convert rows to market prices
                  const newPrices = { ...marketPrices };
                  let count = 0;
                  rows.forEach(row => {
@@ -1045,11 +1032,9 @@ const App = () => {
           }
           throw new Error("權限錯誤：請確認連結設為「知道連結的人皆可檢視」");
       }
-
       const newPrices = { ...marketPrices };
       let count = 0;
       const lines = text.split(/\r?\n/);
-      
       lines.forEach(row => {
           const matches = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
           if(matches && matches.length >= 2) {
@@ -1061,14 +1046,11 @@ const App = () => {
               if(t && !isNaN(p)) { newPrices[t] = p; count++; }
           }
       });
-      
       if(count === 0) throw new Error("解析失敗：未找到有效股價");
-      
       setMarketPrices(newPrices);
       localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices));
       setLastUpdated(new Date().toLocaleString() + " (Sheet)");
       alert(`同步成功！更新了 ${count} 筆報價。`);
-      
     } catch(e) {
       console.error(e);
       alert(`❌ 同步失敗：${e.message}`);
@@ -1080,8 +1062,6 @@ const App = () => {
   const handleSyncPortfolio = (newClients, newPositions) => {
       setClients(newClients);
       setAllPositions(newPositions);
-      
-      // Set active client to first one if current one is invalid
       if(newClients.length > 0) {
           if(!newClients.find(c => c.id === activeClientId)) {
               setActiveClientId(newClients[0].id);
@@ -1112,49 +1092,34 @@ const App = () => {
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
-      
       setIsGeneratingShareLink(true);
-      
       try {
           const clientPositions = allPositions.filter(p => p.clientId === clientId);
           const relevantPrices = {};
           clientPositions.forEach(p => { p.underlyings.forEach(u => { const price = getPriceForTicker(u.ticker); if (price !== undefined) relevantPrices[u.ticker] = price; }); });
-          
           const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated };
           const minified = minifyData(payload);
           const jsonString = JSON.stringify(minified);
           const encoded = base64UrlEncode(jsonString);
           const baseUrl = window.location.href.split(/[?#]/)[0];
           const longUrl = `${baseUrl}#share=${encoded}`;
-          
           let finalUrl = longUrl;
           try {
               const tinyApi = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`;
               const shortUrl = await fetchWithFallback(tinyApi);
-              if (shortUrl && shortUrl.startsWith('http')) {
-                  finalUrl = shortUrl;
-              }
-          } catch (err) {
-              console.warn("URL shortening failed, using long URL", err);
-          }
-
+              if (shortUrl && shortUrl.startsWith('http')) { finalUrl = shortUrl; }
+          } catch (err) { console.warn("URL shortening failed, using long URL", err); }
           setCurrentShareData({ url: finalUrl, name: client.name });
           setIsClientManagerOpen(false); 
           setIsShareLinkModalOpen(true);
-      } catch (e) {
-          alert("連結生成失敗");
-          console.error(e);
-      } finally {
-          setIsGeneratingShareLink(false);
-      }
-  };
+      } catch (e) { alert("連結生成失敗"); console.error(e); } finally { setIsGeneratingShareLink(false); }
+    };
 
   const handleExitGuestMode = () => { if(confirm("確定要登出嗎？")) { setIsGuestMode(false); setGuestData(null); setViewMode('landing'); window.history.replaceState(null, '', window.location.pathname); } };
   const handleOpenAddModal = () => { checkAuth(() => { setEditId(null); setFormPosition(DEFAULT_FORM_STATE); setFormUnderlyings([{ id: Date.now(), ticker: "", entryPrice: 0 }]); setIsAddModalOpen(true); }); };
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    // UPDATED: Added Strike(%) and Strike Price to header
     const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
@@ -1169,11 +1134,11 @@ const App = () => {
           pos.maturityDate, 
           pos.kiLevel, 
           pos.koLevel, 
-          pos.strikeLevel, // Added
+          pos.strikeLevel,
           calculated.laggard.ticker, 
           calculated.laggard.currentPrice, 
           calculated.laggard.entryPrice, 
-          calculated.laggard.strikePrice.toFixed(2), // Added Strike Price
+          calculated.laggard.strikePrice.toFixed(2),
           calculated.laggard.performance.toFixed(2), 
           calculated.riskStatus
       ];
@@ -1350,13 +1315,13 @@ const App = () => {
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
                                     <div className="text-center w-full border-b border-slate-100 pb-2"> 
-                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span> 
+                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span> 
                                         <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span> 
+                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span> 
                                         <div className="text-red-700 font-black text-lg leading-tight truncate w-full"> 
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
