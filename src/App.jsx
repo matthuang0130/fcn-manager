@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Stable Production Version)
- * Note: 這是正式上線版本，已鎖定 Storage Key 以確保資料不流失
+ * FCN 投資組合管理系統 (Final Stable Version - Traditional Chinese)
+ * Features:
+ * - Taiwan Stock Color Logic (Red=Up/KO, Green=Down/KI)
+ * - List View for Underlyings
+ * - "Wan" unit for Principal, Precise integer for Coupon
+ * - Auto-balancing layout height
  */
 
 // --- 1. Constants ---
@@ -12,10 +16,10 @@ const DEFAULT_CLIENTS = [{ id: 'c1', name: '預設投資人' }];
 
 const INITIAL_POSITIONS = [
   {
-    id: 1, clientId: 'c1', productName: "FCN Tech Giants", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
+    id: 1, clientId: 'c1', productName: "FCN 科技巨頭精選", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
     strikeDate: "2024-01-15", koObservationStartDate: "2024-04-15", tenor: "6 個月", maturityDate: "2024-07-15",
     koLevel: 105, kiLevel: 70, strikeLevel: 100,
-    underlyings: [{ ticker: "NVDA", entryPrice: 550 }, { ticker: "AMD", entryPrice: 140 }], status: "Active"
+    underlyings: [{ ticker: "NVDA", entryPrice: 550 }, { ticker: "AMD", entryPrice: 140 }, { ticker: "TSLA", entryPrice: 200 }, { ticker: "MSFT", entryPrice: 400 }], status: "Active"
   }
 ];
 
@@ -28,14 +32,14 @@ const DEFAULT_FORM_STATE = {
   koObservationStartDate: "", tenor: "6 個月", maturityDate: ""
 };
 
-// --- ⚠️ 重要：請勿修改以下 Key 值，否則用戶資料會重置 ⚠️ ---
+// --- Storage Keys ---
 const KEY_POSITIONS = 'fcn_positions_v56'; 
 const KEY_PRICES = 'fcn_market_prices_v56';
 const KEY_CLIENTS = 'fcn_clients_v56';
 const KEY_UPDATE_DATE = 'fcn_last_update_date_v56';
-const KEY_SHEET_ID = 'fcn_google_sheet_id_v56';
+const KEY_SHEET_ID = 'fcn_google_sheet_id_v56'; 
+const KEY_PORTFOLIO_URL = 'fcn_portfolio_sheet_url_v56'; 
 const KEY_PASSWORD = 'fcn_admin_password_v56'; 
-// ----------------------------------------------------------
 
 // --- 2. Helpers ---
 
@@ -44,9 +48,23 @@ const safeGetStorage = (key, defaultValue) => {
     const saved = localStorage.getItem(key);
     if (!saved) return defaultValue;
     const parsed = JSON.parse(saved);
-    if (key.includes('clients') && !Array.isArray(parsed)) return defaultValue;
+    
+    if (key.includes('clients')) {
+        if (!Array.isArray(parsed)) return defaultValue;
+        const isCorrupted = parsed.some(c => 
+            c.name && (c.name.includes('function') || c.name.includes('var ') || c.name.length > 50 && c.name.includes('='))
+        );
+        if (isCorrupted) {
+            console.warn("Detected corrupted client data, resetting to default.");
+            return defaultValue;
+        }
+    }
+    
     return parsed;
-  } catch (e) { return defaultValue; }
+  } catch (e) { 
+      console.error("Storage parse error", e);
+      return defaultValue; 
+  }
 };
 
 const toHalfWidth = (str) => str ? str.replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, ' ') : "";
@@ -75,9 +93,10 @@ const copyToClipboard = (text) => {
     } catch (err) { return false; }
 };
 
-const formatMoney = (val, currency) => {
-    if (val === undefined || val === null) return '0';
-    return currency === 'JPY' ? `¥${val.toLocaleString()}` : `$${val.toLocaleString()}`;
+const formatToWan = (val) => {
+    if (!val) return "0";
+    const wan = val / 10000;
+    return parseFloat(wan.toFixed(2)).toString(); 
 };
 
 const minifyData = (payload) => ({
@@ -102,31 +121,151 @@ const unminifyData = (minified) => {
     };
 };
 
-// --- 3. Sub-Components (Defined BEFORE App) ---
-
-const SummaryCard = ({ title, value, icon, isHighlighted, highlightColor }) => (
-  <div className={`p-3 rounded-xl border transition ${isHighlighted ? highlightColor : 'bg-white border-slate-200 shadow-sm'}`}>
-    <div className="flex items-start justify-between">
-      <div>
-        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">{title}</p>
-        <h3 className="text-2xl font-bold mt-1 text-slate-800">{value}</h3>
-      </div>
-      <div className={`p-1.5 rounded-lg ${isHighlighted ? 'bg-white/50' : 'bg-slate-50'}`}>{icon}</div>
-    </div>
-  </div>
-);
-
-const ProgressBar = ({ current, ki, ko }) => {
-  const getPos = (val) => Math.min(Math.max(((val - (ki - 15)) / (ko + 10 - (ki - 15))) * 100, 0), 100);
-  return (
-    <div className="relative w-full h-1.5 bg-slate-200 rounded-full mt-1 overflow-hidden">
-      <div className="absolute top-0 bottom-0 left-0 bg-red-300" style={{ width: `${getPos(ki)}%` }} />
-      <div className="absolute top-0 bottom-0 right-0 bg-green-300" style={{ width: `${100 - getPos(ko)}%` }} />
-      <div className="absolute top-0 bottom-0 w-1 bg-blue-600 z-10" style={{ left: `${getPos(current)}%` }} />
-    </div>
-  );
+const parseRawDataToRows = (text) => {
+    let rows = [];
+    if (text.trim().startsWith('<') && text.includes('<table')) {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const trs = Array.from(doc.querySelectorAll('tr'));
+            rows = trs.map(tr => 
+                Array.from(tr.querySelectorAll('td, th')).map(cell => cell.innerText.trim())
+            ).filter(row => row.some(cell => cell.length > 0));
+        } catch (e) {
+            console.error("HTML Parse Error", e);
+            throw new Error("HTML 解析失敗，請確認連結內容");
+        }
+    } else {
+        rows = text.split(/\r?\n/).filter(l => l.trim()).map(line => {
+            const res = [];
+            let entry = [];
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') { inQuotes = !inQuotes; }
+                else if (char === ',' && !inQuotes) {
+                    res.push(entry.join('').trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+                    entry = [];
+                } else { entry.push(char); }
+            }
+            res.push(entry.join('').trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+            return res;
+        });
+    }
+    return rows;
 };
 
+const parsePortfolioRows = (rows) => {
+    if (rows.length < 2) throw new Error("資料內容為空或只有標題");
+    
+    const headerMap = {
+        'client': ['client', '投資人', '客戶', 'account'],
+        'product': ['product', 'name', '產品', '名稱', '商品', 'title', '標的名稱'],
+        'issuer': ['issuer', '發行商', '上手'],
+        'currency': ['currency', 'ccy', '幣別', '幣種'],
+        'nominal': ['nominal', 'amount', '本金', '金額', 'notional'],
+        'coupon': ['coupon', 'rate', '年息', '配息', 'interest'],
+        'maturity': ['maturity', 'date', '到期', '到期日', 'end'],
+        'ki': ['ki', 'barrier', '下限', 'knock-in'],
+        'ko': ['ko', 'barrier', '上限', 'knock-out'],
+        'strike': ['strike', '履約', '行權'],
+        'underlyings': ['underlying', 'tickers', 'stocks', '標的', '連結標的', 'code']
+    };
+
+    let headerIdx = -1;
+    let idx = {};
+
+    for(let i=0; i<Math.min(rows.length, 20); i++) {
+        const row = rows[i];
+        if(!row.length) continue;
+        const lowerRow = row.map(c => c.toLowerCase());
+        const getIndex = (keys) => lowerRow.findIndex(h => keys.some(k => h.includes(k)));
+        const pIdx = getIndex(headerMap.product);
+        
+        if (pIdx > -1) {
+            headerIdx = i;
+            idx = {
+                client: getIndex(headerMap.client),
+                product: pIdx,
+                issuer: getIndex(headerMap.issuer),
+                currency: getIndex(headerMap.currency),
+                nominal: getIndex(headerMap.nominal),
+                coupon: getIndex(headerMap.coupon),
+                maturity: getIndex(headerMap.maturity),
+                ki: getIndex(headerMap.ki),
+                ko: getIndex(headerMap.ko),
+                strike: getIndex(headerMap.strike),
+                underlyings: getIndex(headerMap.underlyings)
+            };
+            break;
+        }
+    }
+
+    if (headerIdx === -1) {
+         throw new Error(`找不到「產品名稱」欄位。\n\n系統讀取到的第一列內容：\n[${rows[0] ? rows[0].join(', ') : '無資料'}]\n\n請確認 Google Sheet 中包含「產品」或「名稱」欄位。`);
+    }
+
+    const newClientsMap = new Map();
+    const newPositions = [];
+
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.length < 3 || !row[idx.product]) continue;
+
+        const clientName = idx.client > -1 ? (row[idx.client] || '預設投資人') : '預設投資人';
+        
+        if (!newClientsMap.has(clientName)) {
+            newClientsMap.set(clientName, `c_${Date.now()}_${Math.floor(Math.random()*1000)}`);
+        }
+        const clientId = newClientsMap.get(clientName);
+
+        const underlyingRaw = idx.underlyings > -1 ? row[idx.underlyings] : "";
+        const underlyings = [];
+        if (underlyingRaw) {
+            const pairs = underlyingRaw.split(/[\/;|\n]+/).map(s => s.trim());
+            pairs.forEach(p => {
+                const parts = p.split(/[:\s]+/).filter(Boolean);
+                if (parts.length >= 1) {
+                    const ticker = parts[0].toUpperCase();
+                    let entryPrice = 100; 
+                    if (parts.length >= 2) {
+                        const priceStr = parts[parts.length-1].replace(/,/g, '');
+                        if(!isNaN(parseFloat(priceStr))) entryPrice = parseFloat(priceStr);
+                    }
+                    underlyings.push({ ticker, entryPrice });
+                }
+            });
+        }
+        if (underlyings.length === 0) underlyings.push({ ticker: "UNKNOWN", entryPrice: 100 });
+
+        const pos = {
+            id: Date.now() + i,
+            clientId,
+            productName: row[idx.product],
+            issuer: idx.issuer > -1 ? row[idx.issuer] : "",
+            currency: idx.currency > -1 ? row[idx.currency].toUpperCase() : "USD",
+            nominal: idx.nominal > -1 ? (parseFloat(row[idx.nominal].replace(/,/g, '')) || 0) : 0,
+            couponRate: idx.coupon > -1 ? (parseFloat(row[idx.coupon].replace(/[%]/g, '')) || 0) : 0,
+            maturityDate: idx.maturity > -1 ? row[idx.maturity] : "",
+            kiLevel: idx.ki > -1 ? (parseFloat(row[idx.ki]) || 60) : 60,
+            koLevel: idx.ko > -1 ? (parseFloat(row[idx.ko]) || 100) : 100,
+            strikeLevel: idx.strike > -1 ? (parseFloat(row[idx.strike]) || 100) : 100,
+            underlyings,
+            strikeDate: "",
+            koObservationStartDate: "",
+            tenor: "",
+            status: "Active"
+        };
+        newPositions.push(pos);
+    }
+
+    const newClients = Array.from(newClientsMap.entries()).map(([name, id]) => ({ id, name }));
+    return { clients: newClients, positions: newPositions };
+};
+
+// --- 3. Sub-Components ---
+
+// ... (LandingPage, PasswordInput, PasswordPromptModal, SettingsModal unchanged) ...
 const LandingPage = ({ onAdminLogin, hasPassword }) => {
     const [password, setPassword] = useState("");
     return (
@@ -181,10 +320,19 @@ const PasswordPromptModal = ({ isOpen, onConfirm, onCancel }) => {
 
 const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIsUnlocked }) => {
     if(!isOpen) return null;
+
+    const handleFactoryReset = () => {
+        if(confirm("確定要重置所有資料嗎？\n\n這將會清除所有投資部位、報價與設定，且無法復原。\n請確認您已備份或匯出資料。")) {
+            localStorage.clear();
+            window.location.reload();
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5">
                 <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">安全性設定</h3><button onClick={onClose}><X size={20}/></button></div>
+                
                 <div className="mb-6 border-b border-slate-100 pb-4">
                     <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase">管理員密碼</h4>
                     {savedPassword ? (
@@ -192,6 +340,17 @@ const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIs
                     ) : (
                         <div className="space-y-2"><p className="text-xs text-slate-500 mb-2">設定密碼後，修改資料需先解鎖。</p><PasswordInput onConfirm={(pwd) => { setSavedPassword(pwd); setIsUnlocked(false); }} btnText="設定"/></div>
                     )}
+                </div>
+
+                <div>
+                    <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase">系統維護</h4>
+                    <button 
+                        onClick={handleFactoryReset} 
+                        className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition"
+                    >
+                        <RefreshCcw size={16}/> 重置所有資料
+                    </button>
+                    <p className="text-[10px] text-slate-400 mt-2 text-center">如果介面出現亂碼或錯誤，請嘗試此操作</p>
                 </div>
             </div>
         </div>
@@ -204,13 +363,27 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const textAreaRef = useRef(null);
   useEffect(() => {
     if (isOpen) {
-      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "最差標的", "現價", "進場價", "表現(%)", "狀態"];
+      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
       const rows = allPositions.map(pos => {
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
         return [
-          clientName, pos.productName, pos.issuer, pos.currency, pos.nominal, pos.couponRate, pos.maturityDate, pos.kiLevel, pos.koLevel,
-          calculated.laggard.ticker, calculated.laggard.currentPrice, calculated.laggard.entryPrice, calculated.laggard.performance.toFixed(2), calculated.riskStatus
+          clientName, 
+          pos.productName, 
+          pos.issuer, 
+          pos.currency, 
+          pos.nominal, 
+          pos.couponRate, 
+          pos.maturityDate, 
+          pos.kiLevel, 
+          pos.koLevel, 
+          pos.strikeLevel,
+          calculated.laggard.ticker, 
+          calculated.laggard.currentPrice, 
+          calculated.laggard.entryPrice, 
+          calculated.laggard.strikePrice.toFixed(2),
+          calculated.laggard.performance.toFixed(2), 
+          calculated.riskStatus
         ];
       });
       const content = [headers.join(','), ...rows.map(row => row.map(item => `"${String(item).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -249,66 +422,194 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   );
 };
 
-const BatchPriceModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLastUpdated, googleSheetId, setGoogleSheetId }) => {
-  const [activeTab, setActiveTab] = useState('paste'); 
+const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLastUpdated, googleSheetId, setGoogleSheetId, onSyncPortfolio, portfolioSheetUrl, setPortfolioSheetUrl, fetchWithFallback }) => {
+  const [activeTab, setActiveTab] = useState('market'); 
   const [pasteContent, setPasteContent] = useState('');
   const [inputUrl, setInputUrl] = useState('');
   const [status, setStatus] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingSyncData, setPendingSyncData] = useState(null);
   
-  // Enhanced ID Parser
   const parseSheetId = (url) => { 
       const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/); 
       return match ? match[1] : (url.length > 20 && !url.includes('/') ? url : null); 
   };
 
-  const handlePaste = () => {
+  const handlePasteMarket = () => {
     const lines = pasteContent.split('\n'); const newPrices = { ...marketPrices }; let count = 0;
-    lines.forEach(line => { const match = line.replace(/[¥$,JPY"\s]/g, '').match(/([A-Za-z0-9.:]+)[^\d-]*([\d.,]+)/); if(match) { const t = match[1].toUpperCase().replace("TYO:","").replace(".T",""); const p = parseFloat(match[2].replace(/,/g,'')); if(!isNaN(p)) { newPrices[t] = p; count++; } } });
-    setMarketPrices(newPrices); localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices)); setLastUpdated(new Date().toLocaleDateString() + " (貼上)"); setStatus(`成功更新 ${count} 筆`); setTimeout(onClose, 1000);
+    lines.forEach(line => { const match = line.replace(/[¥$,JPY"\s]/g, '').match(/([A-Za-z0-9.:]+)[^\d-]*([\d.,]+)/); if(match) { const t = match[1].toUpperCase().replace("TYO:","").replace("JP:","").replace(".T",""); const p = parseFloat(match[2].replace(/,/g,'')); if(!isNaN(p)) { newPrices[t] = p; count++; } } });
+    setMarketPrices(newPrices); localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices)); setLastUpdated(new Date().toLocaleDateString() + " (貼上)"); setStatus(`成功更新 ${count} 筆`); setTimeout(() => setStatus(''), 2000);
   };
   
-  const handleSheet = () => { 
+  const handleSaveMarketId = () => { 
       const id = parseSheetId(inputUrl); 
       if(id) { 
           setGoogleSheetId(id); 
-          setStatus("ID 已儲存。請點擊「測試」或回主畫面「同步」。"); 
+          setStatus("ID 已儲存。請回主畫面「同步」。"); 
       } else { 
           setStatus("無效的連結"); 
       } 
   };
+
+  const handleSyncPortfolioAction = async () => {
+      if(!portfolioSheetUrl) return;
+      setIsSyncing(true);
+      setStatus("正在下載資料...");
+      
+      let fetchUrl = portfolioSheetUrl;
+      const sheetId = parseSheetId(portfolioSheetUrl);
+      if(sheetId && portfolioSheetUrl.includes("google.com") && !portfolioSheetUrl.includes("pubhtml")) {
+          if(!portfolioSheetUrl.includes("output=csv")) {
+             fetchUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+          }
+      }
+
+      try {
+          const text = await fetchWithFallback(fetchUrl);
+          
+          if(text.includes("google.com/accounts")) {
+             throw new Error("權限錯誤：請確認連結為「發布到網路」的公開連結");
+          }
+          
+          const rows = parseRawDataToRows(text);
+          const { clients, positions } = parsePortfolioRows(rows);
+          
+          if(positions.length === 0) throw new Error("未找到有效部位資料");
+
+          setPendingSyncData({ clients, positions });
+          setStatus("解析完成，請確認以下資訊...");
+
+      } catch (e) {
+          console.error(e);
+          setStatus(`失敗：${e.message}`);
+      } finally {
+          setIsSyncing(false);
+      }
+  };
+
+  const handleConfirmSync = () => {
+      if(pendingSyncData) {
+          onSyncPortfolio(pendingSyncData.clients, pendingSyncData.positions);
+          setStatus(`同步成功！已更新 ${pendingSyncData.positions.length} 筆資料。`);
+          setPendingSyncData(null);
+          setTimeout(onClose, 1500);
+      }
+  };
+
+  const handleCancelSync = () => {
+      setPendingSyncData(null);
+      setStatus("已取消同步");
+  };
   
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center z-50 p-4 overflow-y-auto items-start pt-10 sm:items-center sm:pt-0">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-5 mb-10">
-        <div className="flex justify-between mb-4 border-b pb-2"><h3 className="font-bold">更新報價</h3><button onClick={onClose}><X/></button></div>
-        <div className="flex gap-2 mb-4"><button onClick={()=>setActiveTab('paste')} className={`flex-1 py-2 text-xs rounded ${activeTab==='paste'?'bg-blue-50 text-blue-600 font-bold':'bg-slate-50'}`}>貼上</button><button onClick={()=>setActiveTab('sheet')} className={`flex-1 py-2 text-xs rounded ${activeTab==='sheet'?'bg-blue-50 text-blue-600 font-bold':'bg-slate-50'}`}>Google Sheet</button></div>
-        {activeTab === 'paste' ? (<div className="space-y-3"><textarea className="w-full h-32 border p-2 text-xs font-mono rounded" placeholder="NVDA 800&#10;7203 3500" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/><button onClick={handlePaste} className="w-full bg-blue-600 text-white py-2 rounded text-sm">更新</button></div>) : (
-            <div className="space-y-3">
-                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 space-y-1">
-                    <p>設定步驟：</p>
-                    <ol className="list-decimal list-inside opacity-80">
-                        <li>Google Sheet 檔案 &gt; 共用 &gt; 發布到網路</li>
-                        <li>格式選擇 <b>CSV</b> (非網頁)</li>
-                        <li>複製該連結貼在下方</li>
-                    </ol>
-                </div>
-                <input className="w-full border p-2 text-xs rounded" placeholder="https://docs.google.com/.../pub?output=csv" value={inputUrl} onChange={e=>setInputUrl(e.target.value)}/>
-                <div className="flex gap-2">
-                    {googleSheetId && (
-                        <a href={`https://docs.google.com/spreadsheets/d/${googleSheetId}/pub?output=csv`} target="_blank" rel="noreferrer" className="flex-1 bg-white border text-slate-600 py-2 rounded text-sm font-bold flex items-center justify-center gap-1 hover:bg-slate-50">
-                            <ExternalLink size={14}/> 測試連結
-                        </a>
-                    )}
-                    <button onClick={handleSheet} className="flex-1 bg-green-600 text-white py-2 rounded text-sm font-bold">儲存設定</button>
-                </div>
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-5 mb-10 h-[600px] flex flex-col">
+        <div className="flex justify-between mb-4 border-b pb-2">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2"><ArrowRightLeft size={18} className="text-blue-600"/> 資料同步中心</h3>
+            <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
+        </div>
+        
+        {!pendingSyncData && (
+            <div className="flex gap-2 mb-4 bg-slate-100 p-1 rounded-lg shrink-0">
+                <button onClick={()=>setActiveTab('market')} className={`flex-1 py-2 text-xs rounded-md transition ${activeTab==='market'?'bg-white text-blue-600 font-bold shadow-sm':'text-slate-500'}`}>1. 市場報價</button>
+                <button onClick={()=>setActiveTab('portfolio')} className={`flex-1 py-2 text-xs rounded-md transition ${activeTab==='portfolio'?'bg-white text-purple-600 font-bold shadow-sm':'text-slate-500'}`}>2. 匯入投資組合</button>
             </div>
         )}
-        {status && <p className="text-center text-xs mt-2 text-blue-600">{status}</p>}
+
+        <div className="flex-1 overflow-y-auto pr-1">
+            {pendingSyncData ? (
+                <div className="space-y-6 flex flex-col items-center justify-center h-full animate-in fade-in zoom-in duration-200">
+                    <div className="bg-blue-50 p-4 rounded-xl text-center w-full">
+                        <Check size={48} className="mx-auto text-blue-500 mb-2"/>
+                        <h4 className="text-lg font-bold text-slate-800">解析成功</h4>
+                        <p className="text-sm text-slate-500 mt-1">請確認是否覆蓋現有資料</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 w-full">
+                        <div className="bg-slate-50 p-3 rounded-lg text-center border border-slate-200">
+                            <span className="block text-2xl font-bold text-slate-800">{pendingSyncData.positions.length}</span>
+                            <span className="text-xs text-slate-500">筆部位資料</span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-lg text-center border border-slate-200">
+                            <span className="block text-2xl font-bold text-slate-800">{pendingSyncData.clients.length}</span>
+                            <span className="text-xs text-slate-500">位投資人</span>
+                        </div>
+                    </div>
+
+                    <div className="w-full space-y-3 mt-auto">
+                        <button onClick={handleConfirmSync} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold shadow-md transition transform active:scale-95">
+                            確認覆蓋並匯入
+                        </button>
+                        <button onClick={handleCancelSync} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-lg font-bold transition">
+                            取消
+                        </button>
+                    </div>
+                </div>
+            ) : activeTab === 'market' ? (
+                <div className="space-y-4">
+                     <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 space-y-1">
+                        <p className="font-bold">自動同步設定：</p>
+                        <p>輸入 Google Sheet 發布的 CSV 或網頁(HTML) 連結，即可在主畫面一鍵更新股價。</p>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500">Google Sheet 連結 (CSV/HTML)</label>
+                        <input className="w-full border p-2 text-xs rounded" placeholder="https://docs.google.com/.../pub?output=csv" value={inputUrl} onChange={e=>setInputUrl(e.target.value)}/>
+                        <button onClick={handleSaveMarketId} className="w-full bg-blue-600 text-white py-2 rounded text-sm font-bold">儲存設定</button>
+                        {googleSheetId && <p className="text-xs text-green-600 flex items-center gap-1"><Check size={12}/> 已連結 ID: {googleSheetId.substring(0,8)}...</p>}
+                    </div>
+                    <hr className="border-slate-100"/>
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500">或直接貼上 (代碼 價格)</label>
+                        <textarea className="w-full h-24 border p-2 text-xs font-mono rounded" placeholder="NVDA 800&#10;7203 3500" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/>
+                        <button onClick={handlePasteMarket} className="w-full bg-slate-600 text-white py-2 rounded text-sm">手動更新</button>
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="bg-purple-50 p-3 rounded text-xs text-purple-800 space-y-2">
+                        <p className="font-bold flex items-center gap-1"><Database size={12}/> 如何運作？</p>
+                        <p>您可以在 Google Sheet 上管理所有投資部位，然後在此處貼上連結匯入。</p>
+                        <p className="font-bold">支援格式：</p>
+                        <ul className="list-disc list-inside opacity-80 pl-2">
+                            <li>CSV 連結 (<code>output=csv</code>)</li>
+                            <li>網頁發布連結 (<code>/pubhtml</code>)</li>
+                        </ul>
+                        <p className="opacity-80 mt-2">支援欄位：產品名稱, 幣別, 本金, 年息, 到期日, KI, KO, <span className="font-bold text-purple-700">履約(%)</span>, 標的</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500">Google Sheet 連結 (CSV/HTML)</label>
+                        <input 
+                            className="w-full border p-2 text-xs rounded focus:ring-2 focus:ring-purple-500 outline-none" 
+                            placeholder="https://docs.google.com/.../pubhtml" 
+                            value={portfolioSheetUrl} 
+                            onChange={e=>setPortfolioSheetUrl(e.target.value)}
+                        />
+                    </div>
+
+                    <button 
+                        onClick={handleSyncPortfolioAction} 
+                        disabled={isSyncing || !portfolioSheetUrl}
+                        className={`w-full py-3 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 ${isSyncing ? 'bg-purple-400' : 'bg-purple-600 hover:bg-purple-700'}`}
+                    >
+                        {isSyncing ? <RefreshCw size={16} className="animate-spin"/> : <CloudDownload size={16}/>}
+                        {isSyncing ? '同步中...' : '開始匯入'}
+                    </button>
+                    
+                    <div className="text-[10px] text-slate-400 text-center">
+                        注意：匯入將會覆蓋此裝置上現有的所有部位資料。
+                    </div>
+                </div>
+            )}
+        </div>
+        
+        {status && !pendingSyncData && <div className="mt-4 p-2 bg-slate-800 text-white text-xs rounded text-center animate-in fade-in whitespace-pre-wrap">{status}</div>}
       </div>
     </div>
   );
 };
 
+// ... ShareLinkModal, ExportModal, ClientManagerModal ... (Unchanged logic, kept for context)
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
@@ -520,6 +821,7 @@ const App = () => {
   const [marketPrices, setMarketPrices] = useState(() => safeGetStorage(KEY_PRICES, DEFAULT_MARKET_PRICES));
   const [lastUpdated, setLastUpdated] = useState(() => localStorage.getItem(KEY_UPDATE_DATE) || "尚無紀錄");
   const [googleSheetId, setGoogleSheetId] = useState(() => localStorage.getItem(KEY_SHEET_ID) || "");
+  const [portfolioSheetUrl, setPortfolioSheetUrl] = useState(() => localStorage.getItem(KEY_PORTFOLIO_URL) || "");
   const [savedPassword, setSavedPassword] = useState(() => localStorage.getItem(KEY_PASSWORD) || "");
   const [isUnlocked, setIsUnlocked] = useState(() => !localStorage.getItem(KEY_PASSWORD)); 
   
@@ -530,7 +832,7 @@ const App = () => {
 
   // UI States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isBatchPriceModalOpen, setIsBatchPriceModalOpen] = useState(false);
+  const [isDataSyncModalOpen, setIsDataSyncModalOpen] = useState(false); // Changed name
   const [isClientManagerOpen, setIsClientManagerOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -541,6 +843,46 @@ const App = () => {
   const [editId, setEditId] = useState(null);
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
+
+  // --- Helper: Fetch with Fallback and Forced UTF-8 ---
+  const fetchWithFallback = async (targetUrl) => {
+      const decoder = new TextDecoder('utf-8');
+
+      const fetchAndDecode = async (url) => {
+          const res = await fetch(url, { cache: 'no-store' }); // Attempt to bypass browser cache
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+          const buffer = await res.arrayBuffer();
+          return decoder.decode(buffer);
+      };
+
+      // Append timestamp to avoid caching
+      const separator = targetUrl.includes('?') ? '&' : '?';
+      const timedUrl = `${targetUrl}${separator}_t=${Date.now()}`;
+      const encodedUrl = encodeURIComponent(timedUrl);
+
+      // Strategy 1: AllOrigins
+      try {
+          return await fetchAndDecode(`https://api.allorigins.win/raw?url=${encodedUrl}`);
+      } catch (e) { console.warn("AllOrigins failed", e); }
+
+      // Strategy 2: CodeTabs
+      try {
+          return await fetchAndDecode(`https://api.codetabs.com/v1/proxy?quest=${encodedUrl}`);
+      } catch (e) { console.warn("CodeTabs failed", e); }
+      
+      // Strategy 3: CorsProxy
+      try {
+          return await fetchAndDecode(`https://corsproxy.io/?${encodedUrl}`);
+      } catch (e) { console.warn("CorsProxy failed", e); }
+
+      // Strategy 4: Direct
+      try {
+          return await fetchAndDecode(timedUrl);
+      } catch (e) { 
+          console.error("All fetch strategies failed", e);
+          throw new Error("無法下載資料 (Network Error)\n\n可能原因：\n1. Google Sheet 未發布或連結權限不足\n2. 網路封鎖了代理服務\n3. 短時間內請求過多\n\n建議：請檢查連結是否為「公開/發布」，或稍後再試。"); 
+      }
+  };
 
   // --- Initialization (Hash Check) ---
   useEffect(() => {
@@ -586,6 +928,7 @@ const App = () => {
   useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_POSITIONS, JSON.stringify(allPositions)); } catch(e){} }, [allPositions, isGuestMode]);
   useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_PRICES, JSON.stringify(marketPrices)); } catch(e){} }, [marketPrices, isGuestMode]);
   useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_SHEET_ID, googleSheetId); } catch(e){} }, [googleSheetId, isGuestMode]);
+  useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_PORTFOLIO_URL, portfolioSheetUrl); } catch(e){} }, [portfolioSheetUrl, isGuestMode]);
   useEffect(() => { if(!isGuestMode) { if(savedPassword) localStorage.setItem(KEY_PASSWORD, savedPassword); else localStorage.removeItem(KEY_PASSWORD); } }, [savedPassword, isGuestMode]);
 
   // --- Logic ---
@@ -619,10 +962,11 @@ const App = () => {
       return detail;
     });
     const monthlyCoupon = Math.round((pos.nominal * (pos.couponRate / 100)) / 12);
-    let riskStatus = "Normal", statusColor = "bg-blue-100 text-blue-800";
-    if (minPerf <= pos.kiLevel) { riskStatus = "KI HIT"; statusColor = "bg-red-100 text-red-800 font-bold border border-red-300"; } 
-    else if (minPerf <= pos.kiLevel + 5) { riskStatus = "Near KI"; statusColor = "bg-orange-100 text-orange-800 font-bold"; } 
-    else if (minPerf >= pos.koLevel) { riskStatus = "KO Ready"; statusColor = "bg-green-100 text-green-800 font-bold border border-green-300"; }
+    let riskStatus = "觀察中", statusColor = "bg-blue-100 text-blue-800";
+    // Taiwan logic: Red = KO/Safe, Green = KI/Danger
+    if (minPerf <= pos.kiLevel) { riskStatus = "已觸及 KI"; statusColor = "bg-green-100 text-green-800 font-bold border border-green-300"; } 
+    else if (minPerf <= pos.kiLevel + 5) { riskStatus = "瀕臨 KI"; statusColor = "bg-orange-100 text-orange-800 font-bold"; } 
+    else if (minPerf >= pos.koLevel) { riskStatus = "達成 KO"; statusColor = "bg-red-100 text-red-800 font-bold border border-red-300"; }
     return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon };
   };
 
@@ -642,7 +986,10 @@ const App = () => {
   // --- Action Handlers ---
   // FIXED: Force Proxy via AllOrigins
   const handleSyncGoogleSheet = async () => {
-    if(!googleSheetId) return;
+    if(!googleSheetId) {
+        setIsDataSyncModalOpen(true);
+        return;
+    }
     setIsLoading(true);
     
     // Construct export URL (Shared Link Safe)
@@ -650,17 +997,35 @@ const App = () => {
     // But if googleSheetId is just the ID, then use this:
     const exportUrl = `https://docs.google.com/spreadsheets/d/${googleSheetId}/export?format=csv`;
     
-    // Always use proxy to bypass CORS on export URLs
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(exportUrl)}`;
-    
     try {
-      const response = await fetch(proxyUrl);
-      if(!response.ok) throw new Error("Network Error");
-      
-      const text = await response.text();
+      const text = await fetchWithFallback(exportUrl);
       
       // Check if we got an HTML error page instead of CSV
       if(text.includes("<!DOCTYPE html") || text.includes("google.com/accounts")) {
+          // If HTML, try to parse as table directly if it's a pubhtml link
+          if(googleSheetId.length > 20) { // likely full ID or bad ID
+             const rows = parseRawDataToRows(text);
+             if(rows.length > 0) {
+                 // Convert rows to market prices
+                 const newPrices = { ...marketPrices };
+                 let count = 0;
+                 rows.forEach(row => {
+                     if(row.length >= 2) {
+                         const t = row[0].toUpperCase().replace("TYO:","").replace("JP:","").replace(".T","");
+                         const pStr = row[1].replace(/[¥$,JPY"\s]/g, '').replace(/,/g, '');
+                         const p = parseFloat(pStr);
+                         if(t && !isNaN(p)) { newPrices[t] = p; count++; }
+                     }
+                 });
+                 if(count > 0) {
+                     setMarketPrices(newPrices);
+                     localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices));
+                     setLastUpdated(new Date().toLocaleString() + " (Web)");
+                     alert(`同步成功！從網頁更新了 ${count} 筆報價。`);
+                     return;
+                 }
+             }
+          }
           throw new Error("權限錯誤：請確認連結設為「知道連結的人皆可檢視」");
       }
 
@@ -689,10 +1054,22 @@ const App = () => {
       
     } catch(e) {
       console.error(e);
-      alert(`❌ 同步失敗：${e.message}\n\n請確認：\n1. 連結權限已設為「知道連結的人皆可檢視」\n2. ID 是否正確`);
+      alert(`❌ 同步失敗：${e.message}`);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSyncPortfolio = (newClients, newPositions) => {
+      setClients(newClients);
+      setAllPositions(newPositions);
+      
+      // Set active client to first one if current one is invalid
+      if(newClients.length > 0) {
+          if(!newClients.find(c => c.id === activeClientId)) {
+              setActiveClientId(newClients[0].id);
+          }
+      }
   };
   
   const handleSavePosition = (e) => {
@@ -739,11 +1116,29 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "最差標的", "現價", "進場價", "表現(%)", "狀態"];
+    // UPDATED: Added Strike(%) and Strike Price to header
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
-      return [clientName, pos.productName, pos.issuer, pos.currency, pos.nominal, pos.couponRate, pos.maturityDate, pos.kiLevel, pos.koLevel, calculated.laggard.ticker, calculated.laggard.currentPrice, calculated.laggard.entryPrice, calculated.laggard.performance.toFixed(2), calculated.riskStatus];
+      return [
+          clientName, 
+          pos.productName, 
+          pos.issuer, 
+          pos.currency, 
+          pos.nominal, 
+          pos.couponRate, 
+          pos.maturityDate, 
+          pos.kiLevel, 
+          pos.koLevel, 
+          pos.strikeLevel, // Added
+          calculated.laggard.ticker, 
+          calculated.laggard.currentPrice, 
+          calculated.laggard.entryPrice, 
+          calculated.laggard.strikePrice.toFixed(2), // Added
+          calculated.laggard.performance.toFixed(2), 
+          calculated.riskStatus
+      ];
     });
     const csvString = [headers.join(','), ...rows.map(row => row.map(item => `"${String(item).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
@@ -783,13 +1178,17 @@ const App = () => {
                <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
                {!isGuestMode && (
                    <>
+                    <button onClick={() => checkAuth(() => setIsDataSyncModalOpen(true))} className="flex-none flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 text-white border border-purple-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap shadow-md">
+                        <ArrowRightLeft size={16} />
+                        <span>資料同步</span>
+                    </button>
                     {googleSheetId && (
-                        <button onClick={handleSyncGoogleSheet} className="flex-none flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white border border-green-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap shadow-md">
-                            <CloudDownload size={16} className={isLoading ? "animate-bounce" : ""} />
-                            <span>同步</span>
+                        <button onClick={handleSyncGoogleSheet} className="flex-none flex items-center justify-center gap-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap">
+                            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
+                            <span className="hidden sm:inline">快刷報價</span>
+                            <span className="sm:hidden">報價</span>
                         </button>
                     )}
-                    <button onClick={() => checkAuth(() => setIsBatchPriceModalOpen(true))} className="flex-none flex items-center justify-center gap-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><RefreshCw size={16} /><span className="hidden sm:inline">報價</span><span className="sm:hidden">報價</span></button>
                     <button onClick={handleOpenAddModal} className="flex-none flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-md whitespace-nowrap"><Plus size={16} /><span className="hidden sm:inline">新增</span><span className="sm:hidden">新增</span></button>
                    </>
                )}
@@ -800,23 +1199,72 @@ const App = () => {
       <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column */}
         <div className="lg:col-span-9 space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3 rounded-xl border bg-white border-slate-200 shadow-sm">
-              <div className="flex justify-between mb-2"><span className="text-[10px] text-slate-500 font-bold uppercase">USD 資產</span><DollarSign size={14} className="text-slate-300"/></div>
-              <div className="space-y-1"><div className="flex justify-between text-xs text-slate-600"><span>本金</span><span className="font-bold text-slate-800">${(summary.usd.nominal/1000).toFixed(0)}k</span></div><div className="flex justify-between text-xs text-green-600"><span>月息</span><span className="font-bold">+${summary.usd.monthly.toLocaleString()}</span></div></div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            
+            {/* USD Asset Card */}
+            <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <DollarSign size={48} className="text-slate-400"/>
+                </div>
+                <div className="relative z-10">
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">USD 資產總覽</div>
+                    <div className="flex flex-col gap-1">
+                        <div className="flex items-baseline gap-1">
+                            {/* Only integers for USD Nominal (e.g., 12萬) */}
+                            <span className="text-2xl font-black text-slate-800">${(summary.usd.nominal/10000).toFixed(0)}</span>
+                            <span className="text-sm font-bold text-slate-600">萬</span>
+                            <span className="text-[10px] text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-red-700 font-bold">
+                             <Plus size={12} strokeWidth={4} />
+                             {/* Explicit integer value for monthly coupon */}
+                             <span className="text-lg">${summary.usd.monthly.toLocaleString()}</span>
+                             <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div className="p-3 rounded-xl border bg-white border-slate-200 shadow-sm">
-              <div className="flex justify-between mb-2"><span className="text-[10px] text-slate-500 font-bold uppercase">JPY 資產</span><Coins size={14} className="text-slate-300"/></div>
-              <div className="space-y-1"><div className="flex justify-between text-xs text-slate-600"><span>本金</span><span className="font-bold text-slate-800">¥{(summary.jpy.nominal/10000).toFixed(0)}w</span></div><div className="flex justify-between text-xs text-green-600"><span>月息</span><span className="font-bold">+¥{summary.jpy.monthly.toLocaleString()}</span></div></div>
+
+            {/* JPY Asset Card */}
+            <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Coins size={48} className="text-slate-400"/>
+                </div>
+                <div className="relative z-10">
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">JPY 資產總覽</div>
+                     <div className="flex flex-col gap-1">
+                        <div className="flex items-baseline gap-1">
+                            {/* Only integers for JPY Nominal (e.g., 300萬) */}
+                            <span className="text-2xl font-black text-slate-800">¥{(summary.jpy.nominal/10000).toFixed(0)}</span>
+                            <span className="text-sm font-bold text-slate-600">萬</span>
+                            <span className="text-[10px] text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-red-700 font-bold">
+                             <Plus size={12} strokeWidth={4} />
+                             {/* Explicit integer value for monthly coupon */}
+                             <span className="text-lg">¥{summary.jpy.monthly.toLocaleString()}</span>
+                             <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div className={`p-3 rounded-xl border shadow-sm flex flex-col justify-between ${summary.koCount > 0 ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'}`}>
-              <span className="text-[10px] text-slate-500 font-bold uppercase">KO 機會</span>
-              <div className="flex items-end justify-between"><span className="text-2xl font-bold text-blue-600">{summary.koCount}</span><TrendingUp size={18} className="text-blue-400 mb-1"/></div>
+
+            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.koCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">KO 機會</span>
+              <div className="flex items-end justify-between mt-2">
+                  <span className="text-3xl font-black text-red-600">{summary.koCount}</span>
+                  <TrendingUp size={24} className="text-red-400 mb-1"/>
+              </div>
             </div>
-            <div className={`p-3 rounded-xl border shadow-sm flex flex-col justify-between ${summary.kiCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-              <span className="text-[10px] text-slate-500 font-bold uppercase">KI 風險</span>
-              <div className="flex items-end justify-between"><span className="text-2xl font-bold text-red-600">{summary.kiCount}</span><AlertTriangle size={18} className="text-red-400 mb-1"/></div>
+            
+            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.kiCount > 0 ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'}`}>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">KI 風險</span>
+              <div className="flex items-end justify-between mt-2">
+                  <span className="text-3xl font-black text-green-600">{summary.kiCount}</span>
+                  <AlertTriangle size={24} className="text-green-400 mb-1"/>
+              </div>
             </div>
+
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
@@ -825,80 +1273,97 @@ const App = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[800px]">
-                <thead>
-                  <tr className="text-xs text-slate-500 border-b border-slate-100">
-                    <th className="px-4 py-3 font-medium w-56">產品資訊</th>
-                    <th className="px-4 py-3 font-medium text-right">本金 / 月息</th>
-                    <th className="px-4 py-3 font-medium">連結標的情況</th>
-                    <th className="px-4 py-3 font-medium text-right">操作</th>
+                <thead className="bg-slate-50/50 border-b border-slate-200">
+                  <tr className="text-sm text-slate-600 font-bold">
+                    <th className="px-4 py-3 w-64">產品資訊</th>
+                    <th className="px-4 py-3 text-right w-32">本金 / 月息</th>
+                    <th className="px-4 py-3">連結標的情況</th>
+                    <th className="px-4 py-3 text-right w-20">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {processedPositions.map((pos) => (
-                    <tr key={pos.id} className="hover:bg-slate-50 transition group">
-                      <td className="px-4 py-4 align-top">
-                        <div className="flex items-center gap-2 mb-1">
-                           <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                           <div className="text-xs text-slate-500 font-medium truncate max-w-[140px]">{pos.productName}</div>
-                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-1 ${pos.statusColor}`}>{pos.riskStatus}</span>
-                        </div>
-                        <div className="flex flex-col gap-1.5 my-2">
-                             <div className="flex flex-wrap gap-2 items-center">
-                                 <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] text-slate-600 border border-slate-200">{pos.issuer}</span>
-                                 <span className="bg-blue-100 px-2 py-0.5 rounded text-sm text-blue-800 font-bold">年息 {pos.couponRate}%</span>
-                             </div>
-                             <div className="flex flex-wrap gap-1.5">
-                                 <span className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-100 font-medium">KI {pos.kiLevel}%</span>
-                                 <span className="text-[10px] bg-slate-50 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 font-medium">履約 {pos.strikeLevel}%</span>
-                                 <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded border border-green-100 font-medium">KO {pos.koLevel}%</span>
-                             </div>
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1"><Clock size={10}/> {pos.maturityDate} 到期</div>
-                      </td>
-                      <td className="px-4 py-4 text-right align-top">
-                        <div className="font-mono font-medium text-slate-700 text-sm">{formatMoney(pos.nominal, pos.currency)}</div>
-                        <div className="text-sm text-green-600 font-bold mt-1 bg-green-50 px-2 py-0.5 rounded inline-block">月息 {formatMoney(pos.monthlyCoupon, pos.currency)}</div>
-                      </td>
-                      <td className="px-4 py-4 align-top">
-                        <div className="flex flex-col gap-2">
-                          {(pos.underlyingDetails || []).map((u) => {
-                            let tickerStyle = "bg-slate-100 text-slate-800 border-slate-200";
-                            if (u.currentPrice >= u.koPrice) tickerStyle = "bg-red-600 text-white border-red-700 shadow-sm";
-                            else if (u.currentPrice <= u.kiPrice) tickerStyle = "bg-green-600 text-white border-green-700 shadow-sm";
-                            let priceColor = "text-slate-700";
-                            if (u.currentPrice >= u.koPrice || u.currentPrice <= u.kiPrice) priceColor = "text-white/90";
-                            else priceColor = u.currentPrice >= u.entryPrice ? "text-red-600" : "text-green-600";
-                            const isHighlighted = u.currentPrice >= u.koPrice || u.currentPrice <= u.kiPrice;
-                            const dividerColor = isHighlighted ? 'border-white/30' : 'border-slate-200/60';
-
-                            return (
-                              <div key={u.ticker} className={`flex items-center justify-between text-xs p-2 rounded border ${tickerStyle}`}>
-                                <div className="flex flex-col gap-0.5">
-                                    <div className="flex items-baseline gap-2">
-                                        <span className="font-extrabold text-base">{u.ticker}</span>
-                                        <span className={`font-mono font-bold text-base ${priceColor}`}>${u.currentPrice.toLocaleString()}</span>
+                  {processedPositions.map((pos) => {
+                      const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
+                      return (
+                        <tr key={pos.id} className="hover:bg-slate-50 transition group">
+                          <td className="px-4 py-2 align-top"> {/* Reduced padding py-4 -> py-2 */}
+                            <div className="flex items-center gap-2 mb-2">
+                               <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
+                               <div className="text-lg font-black text-slate-800 truncate max-w-[200px]" title={pos.productName}>{pos.productName}</div>
+                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                 <div className="flex flex-wrap gap-2 items-center">
+                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
+                                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
+                                 </div>
+                                 
+                                 {/* Updated: Simplified Product Info - Only Percentages */}
+                                 <div className="flex flex-wrap gap-2 mt-2 text-[11px] font-bold">
+                                     <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100">KO {pos.koLevel}%</span>
+                                     <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
+                                     <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
+                                 </div>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
+                          </td>
+                          
+                          <td className="px-4 py-2 align-top"> {/* Reduced padding py-4 -> py-2 */}
+                            <div className="flex flex-col gap-4 items-end h-full justify-center">
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-col justify-center items-center gap-1 w-24 h-24">
+                                    <div className="text-center w-full border-b border-slate-100 pb-1">
+                                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">本金</span>
+                                        <div className="text-slate-800 font-black text-sm leading-tight truncate w-full">
+                                           {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-center w-full pt-1">
+                                        <span className="text-[9px] text-red-400 font-bold uppercase tracking-wider block">月息</span>
+                                        <div className="text-red-700 font-black text-sm leading-tight truncate w-full">
+                                           {pos.monthlyCoupon.toLocaleString()}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className={`flex gap-3 font-mono text-right ${u.currentPrice >= u.koPrice || u.currentPrice <= u.kiPrice ? 'text-white/90' : 'text-slate-500'}`}>
-                                    <div className="flex flex-col items-end"><span className="text-[9px] opacity-80">出場</span><span className={`text-base font-bold ${u.currentPrice >= u.koPrice || u.currentPrice <= u.kiPrice ? 'text-white' : 'text-green-600'}`}>${u.koPrice.toLocaleString(undefined, {maximumFractionDigits:0})}</span></div>
-                                    <div className={`flex flex-col items-end border-l ${dividerColor} pl-2`}><span className="text-[9px] opacity-80">履約</span><span className={`text-base font-bold ${u.currentPrice >= u.koPrice || u.currentPrice <= u.kiPrice ? 'text-white' : 'text-slate-800'}`}>${u.strikePrice.toLocaleString(undefined, {maximumFractionDigits:0})}</span></div>
-                                    <div className={`flex flex-col items-end border-l ${dividerColor} pl-2`}><span className="text-[9px] opacity-80">下限</span><span className={`text-base font-bold ${u.currentPrice >= u.koPrice || u.currentPrice <= u.kiPrice ? 'text-white' : 'text-red-600'}`}>${u.kiPrice.toLocaleString(undefined, {maximumFractionDigits:0})}</span></div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-right align-top">
-                        {!isGuestMode && (
-                            <div className="flex flex-col items-end gap-2">
-                                <button onClick={() => handleOpenEditModal(pos)} className="text-blue-400 hover:text-blue-600 p-1" title="編輯部位"><Pencil size={16} /></button>
-                                <button onClick={() => deletePosition(pos.id)} className="text-slate-300 hover:text-red-500 p-1" title="刪除部位"><Trash2 size={16} /></button>
                             </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          </td>
+
+                          <td className="px-4 py-2 align-top"> {/* Reduced padding py-4 -> py-2 */}
+                            <div className="flex flex-col gap-1"> {/* Replaced grid with flex col for table list */}
+                              {/* Table Header */}
+                              <div className="grid grid-cols-5 gap-2 text-[10px] text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                                  <span className="text-left">標的</span>
+                                  <span className="text-right">現價</span>
+                                  <span className="text-right text-red-600">KO</span>
+                                  <span className="text-right text-slate-500">履約</span>
+                                  <span className="text-right text-green-600">KI</span>
+                              </div>
+                              {/* Table Rows */}
+                              {(pos.underlyingDetails || []).map((u) => {
+                                return (
+                                  <div key={u.ticker} className="grid grid-cols-5 gap-2 items-center text-xs border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded">
+                                    <span className="font-black text-slate-800">{u.ticker}</span>
+                                    <span className={`font-mono font-black text-right ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                        {u.currentPrice.toLocaleString()}
+                                    </span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-[11px]">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-400 text-right text-[11px]">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-[11px]">{u.kiPrice.toFixed(0)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-right align-top"> {/* Reduced padding */}
+                            {!isGuestMode && (
+                                <div className="flex flex-col items-end gap-2 h-full justify-center">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
+                                    <button onClick={() => deletePosition(pos.id)} className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="刪除部位"><Trash2 size={18} /></button>
+                                </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                  })}
                   {processedPositions.length === 0 && (
                     <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-400">目前沒有部位，請點擊右上角「新增」</td></tr>
                   )}
@@ -907,46 +1372,10 @@ const App = () => {
             </div>
           </div>
         </div>
-        {/* Right Column */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sticky top-24">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm"><List size={16} className="text-blue-500" />共用報價</h3>
-              <div className="flex gap-2">
-                {googleSheetId && (
-                  <button onClick={() => setShowEmbedSheet(!showEmbedSheet)} className={`text-[10px] px-2 py-1 rounded transition flex items-center gap-1 ${showEmbedSheet ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                    {showEmbedSheet ? <Eye size={10}/> : <EyeOff size={10}/>}{showEmbedSheet ? '隱藏' : '表格'}
-                  </button>
-                )}
-              </div>
-            </div>
-            {googleSheetId && showEmbedSheet && (
-               <div className="mb-4 border border-slate-200 rounded overflow-hidden shadow-inner h-48 bg-slate-50 relative">
-                  <iframe src={`https://docs.google.com/spreadsheets/d/${googleSheetId}/pubhtml?widget=true&headers=false`} className="w-full h-full border-0" title="Google Sheet Embed"/>
-               </div>
-            )}
-            <div className={`space-y-3 overflow-y-auto pr-1 ${showEmbedSheet ? 'max-h-[40vh]' : 'max-h-[70vh]'}`}>
-              {activeTickers.map((ticker) => {
-                const price = getPriceForTicker(ticker) || 100;
-                const isMapped = getPriceForTicker(ticker) !== undefined;
-                return (
-                  <div key={ticker} className="space-y-1 pb-2 border-b border-slate-100 last:border-0">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-xs text-slate-700 bg-slate-100 px-1.5 rounded">{ticker}</span>
-                      {!isMapped && <span className="text-[9px] text-red-500">未對應</span>}
-                    </div>
-                    <input type="number" value={price} onChange={(e) => {}} readOnly className="w-full px-2 py-1 text-sm border border-slate-300 rounded text-right font-mono bg-slate-50" step="0.01"/>
-                  </div>
-                );
-              })}
-              {activeTickers.length === 0 && <div className="text-center text-xs text-slate-400 py-4">尚無標的</div>}
-            </div>
-          </div>
-        </div>
       </main>
 
       {/* Modals */}
-      {isBatchPriceModalOpen && <BatchPriceModal isOpen={isBatchPriceModalOpen} onClose={() => setIsBatchPriceModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} />}
+      {isDataSyncModalOpen && <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} />}
       {isAddModalOpen && <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />}
       {isClientManagerOpen && <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} />}
       {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} allPositions={allPositions} clients={clients} marketPrices={marketPrices} calculateRisk={calculateRisk} />}
