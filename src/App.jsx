@@ -4,9 +4,8 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
  * Update:
- * 1. Revert: Underlying Assets display switched back to "List View" (Table) as requested.
- * 2. Layout: Clean and simple table for Ticker | Current | KO | Strike | KI.
- * 3. Retained: Card style for Principal/Coupon and Center alignment.
+ * 1. Header: Restored the "Share Share" button next to the client selector for quick access.
+ * 2. Client Manager: Increased visibility of action buttons.
  */
 
 // --- 1. Constants ---
@@ -707,7 +706,7 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
                 {c.id === activeId && <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 rounded">當前</span>}
               </div>
               <div className="flex gap-1">
-                  <button onClick={() => onGenerateShareLink(c.id)} className="text-slate-300 hover:text-blue-500 p-1" title="產生分享連結"><Share2 size={14}/></button>
+                  <button onClick={() => onGenerateShareLink(c.id)} className="text-slate-400 hover:text-blue-600 p-1" title="產生分享連結"><Share2 size={14}/></button>
                   <button onClick={() => onDelete(c.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 size={14}/></button>
               </div>
             </div>
@@ -842,6 +841,7 @@ const App = () => {
   const [currentShareData, setCurrentShareData] = useState({ url: '', name: '' }); 
   const [pendingAction, setPendingAction] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingShareLink, setIsGeneratingShareLink] = useState(false);
   const [showEmbedSheet, setShowEmbedSheet] = useState(false);
 
   // UI States
@@ -1166,11 +1166,11 @@ const App = () => {
           pos.maturityDate, 
           pos.kiLevel, 
           pos.koLevel, 
-          pos.strikeLevel, // Added
+          pos.strikeLevel,
           calculated.laggard.ticker, 
           calculated.laggard.currentPrice, 
           calculated.laggard.entryPrice, 
-          calculated.laggard.strikePrice.toFixed(2), // Added Strike Price
+          calculated.laggard.strikePrice.toFixed(2),
           calculated.laggard.performance.toFixed(2), 
           calculated.riskStatus
       ];
@@ -1205,7 +1205,8 @@ const App = () => {
                     <div className="bg-white p-1.5 rounded shadow-sm text-blue-600"><User size={16} /></div>
                     <select value={activeClientId} onChange={(e) => setActiveClientId(e.target.value)} className="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer appearance-none pr-6 min-w-[120px]">{clients.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>
                     <ChevronDown size={14} className="absolute right-2 text-slate-400 pointer-events-none"/>
-                    <button onClick={() => setIsClientManagerOpen(true)} className="ml-2 text-slate-400 hover:text-blue-600"><Edit3 size={14} /></button>
+                    <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="分享給投資人"><Share2 size={16} /></button>
+                    <button onClick={() => setIsClientManagerOpen(true)} className="ml-1 text-slate-400 hover:text-blue-600"><Edit3 size={14} /></button>
                 </div>
               )}
             </div>
