@@ -4,8 +4,9 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 /**
  * FCN 投資組合管理系統 (Final Stable Version - Traditional Chinese)
  * Update:
- * 1. Layout Alignment: Changed table cells to 'align-middle' for Product Info and Principal/Coupon.
- * This ensures content is vertically centered regardless of the row height.
+ * 1. Layout Fix: All table cells are vertically centered (align-middle).
+ * 2. Cleanup: Removed duplicate price table from Product Info column.
+ * 3. Product Name: Smaller font, allows wrapping.
  */
 
 // --- 1. Constants ---
@@ -14,7 +15,7 @@ const DEFAULT_CLIENTS = [{ id: 'c1', name: '預設投資人' }];
 
 const INITIAL_POSITIONS = [
   {
-    id: 1, clientId: 'c1', productName: "FCN 科技巨頭精選", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
+    id: 1, clientId: 'c1', productName: "FCN Tech SNMSELN02384", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
     strikeDate: "2024-01-15", koObservationStartDate: "2024-04-15", tenor: "6 個月", maturityDate: "2024-07-15",
     koLevel: 105, kiLevel: 70, strikeLevel: 100,
     underlyings: [{ ticker: "NVDA", entryPrice: 550 }, { ticker: "AMD", entryPrice: 140 }, { ticker: "TSLA", entryPrice: 200 }, { ticker: "MSFT", entryPrice: 400 }], status: "Active"
@@ -1133,7 +1134,7 @@ const App = () => {
           calculated.laggard.ticker, 
           calculated.laggard.currentPrice, 
           calculated.laggard.entryPrice, 
-          calculated.laggard.strikePrice.toFixed(2), // Added
+          calculated.laggard.strikePrice.toFixed(2), // Added Strike Price
           calculated.laggard.performance.toFixed(2), 
           calculated.riskStatus
       ];
@@ -1273,7 +1274,7 @@ const App = () => {
               <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead className="bg-slate-50/50 border-b border-slate-200">
                   <tr className="text-sm text-slate-600 font-bold">
-                    <th className="px-4 py-3 w-64">產品資訊</th>
+                    <th className="px-4 py-3 min-w-[200px]">產品資訊</th>
                     <th className="px-4 py-3 text-right w-40">本金 / 月息</th>
                     <th className="px-4 py-3">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-20">操作</th>
@@ -1287,7 +1288,7 @@ const App = () => {
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               <div className="text-lg font-black text-slate-800 truncate max-w-[200px]" title={pos.productName}>{pos.productName}</div>
+                               <div className="text-sm font-bold text-slate-800 whitespace-normal break-words max-w-[220px]" title={pos.productName}>{pos.productName}</div>
                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col gap-1.5">
@@ -1309,14 +1310,14 @@ const App = () => {
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28"> 
                                     <div className="text-center w-full border-b border-slate-100 pb-3">
-                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span>
-                                        <div className="text-slate-800 font-black text-base leading-tight truncate w-full">
+                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span>
+                                        <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span>
-                                        <div className="text-red-700 font-black text-base leading-tight truncate w-full">
+                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span>
+                                        <div className="text-red-700 font-black text-lg leading-tight truncate w-full">
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
                                     </div>
@@ -1324,7 +1325,7 @@ const App = () => {
                             </div>
                           </td>
 
-                          <td className="px-4 py-2 align-top"> 
+                          <td className="px-4 py-2 align-middle"> 
                             <div className="flex flex-col gap-1"> 
                               {/* Table Header */}
                               <div className="grid grid-cols-5 gap-2 text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
