@@ -4,8 +4,11 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
  * Update:
- * 1. Header: Restored the "Share Share" button next to the client selector for quick access.
- * 2. Client Manager: Increased visibility of action buttons.
+ * 1. Mobile Optimization: Adjusted font sizes and gaps in the Underlying Assets table for mobile screens.
+ * - Current Price: text-sm (mobile) / text-base (desktop)
+ * - Barrier Prices: text-xs (mobile) / text-sm (desktop)
+ * - Gaps: gap-1 (mobile) / gap-2 (desktop)
+ * This prevents 5-digit prices from overlapping with adjacent columns on small screens.
  */
 
 // --- 1. Constants ---
@@ -1166,11 +1169,11 @@ const App = () => {
           pos.maturityDate, 
           pos.kiLevel, 
           pos.koLevel, 
-          pos.strikeLevel,
+          pos.strikeLevel, // Added
           calculated.laggard.ticker, 
           calculated.laggard.currentPrice, 
           calculated.laggard.entryPrice, 
-          calculated.laggard.strikePrice.toFixed(2),
+          calculated.laggard.strikePrice.toFixed(2), // Added Strike Price
           calculated.laggard.performance.toFixed(2), 
           calculated.riskStatus
       ];
@@ -1365,7 +1368,7 @@ const App = () => {
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex flex-col gap-1"> 
                               {/* Table Header */}
-                              <div className="grid grid-cols-5 gap-2 text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                              <div className="grid grid-cols-5 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="text-left">標的</span>
                                   <span className="text-right">現價</span>
                                   <span className="text-right text-red-600">KO</span>
@@ -1375,14 +1378,14 @@ const App = () => {
                               {/* Table Rows */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  <div key={u.ticker} className="grid grid-cols-5 gap-2 items-center text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded">
-                                    <span className="font-black text-slate-800 text-sm">{u.ticker}</span>
-                                    <span className={`font-mono font-black text-right text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                  <div key={u.ticker} className="grid grid-cols-5 gap-1 sm:gap-2 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded">
+                                    <span className="font-black text-slate-800 text-xs sm:text-sm truncate">{u.ticker}</span>
+                                    <span className={`font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
-                                    <span className="font-mono font-bold text-red-700 text-right text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-xs sm:text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-500 text-right text-xs sm:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-xs sm:text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
                                 );
                               })}
