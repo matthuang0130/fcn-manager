@@ -2,11 +2,10 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Stable Version - Traditional Chinese)
+ * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
  * Update:
- * 1. Layout Fix: All table cells are vertically centered (align-middle).
- * 2. Cleanup: Removed duplicate price table from Product Info column.
- * 3. Product Name: Smaller font, allows wrapping.
+ * 1. Z-Index Fix: Increased Header z-index to z-40/z-50 to prevent content scrolling overlap.
+ * 2. Maintains all previous layout and visual improvements.
  */
 
 // --- 1. Constants ---
@@ -1152,12 +1151,12 @@ const App = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-10">
       {isGuestMode && (
-          <div className="bg-blue-600 text-white px-4 py-2 text-xs flex justify-between items-center sticky top-0 z-20 shadow-md">
+          <div className="bg-blue-600 text-white px-4 py-2 text-xs flex justify-between items-center sticky top-0 z-50 shadow-md">
               <div className="flex items-center gap-2"><Eye size={14} /><span className="font-bold">訪客檢視：{activeClient.name}</span></div>
               <button onClick={handleExitGuestMode} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 transition"><X size={12}/> 登出</button>
           </div>
       )}
-      <header className={`bg-white shadow-sm border-b border-slate-200 ${!isGuestMode ? 'sticky top-0 z-10' : ''}`}>
+      <header className={`bg-white shadow-sm border-b border-slate-200 ${!isGuestMode ? 'sticky top-0 z-40' : ''}`}>
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex flex-col md:flex-row justify-between items-center gap-3">
             <div className="flex items-center justify-between w-full md:w-auto gap-4">
@@ -1288,7 +1287,7 @@ const App = () => {
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               <div className="text-sm font-bold text-slate-800 whitespace-normal break-words max-w-[220px]" title={pos.productName}>{pos.productName}</div>
+                               <div className="text-sm font-black text-slate-800 whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col gap-1.5">
