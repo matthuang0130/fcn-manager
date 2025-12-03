@@ -2,12 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Fixes v8.3:
- * 1. Export/Import Round-trip Fix:
- * - The "Underlying Assets" column in CSV now only exports "Ticker EntryPrice" (e.g., "NVDA 550 / AMD 140").
- * - Removed Current Price & Percentage from this specific column to prevent import parsing errors.
- * 2. Mobile Layout: Maintained the optimized stacked layout for small screens.
+ * FCN 投資組合管理系統 (Final Production Version - Fixed Import/Export)
+ * Fixes v9.1:
+ * 1. HTML Parsing: Strips <script> and <style> tags to prevent JS code from appearing as data (e.g. "var d=this").
+ * 2. Column Logic: Stronger exclusion for KO Price to avoid matching Date columns (preventing "2025%").
+ * 3. Data Safety: Ignores rows that look like code or garbage.
  */
 
 // --- 1. Constants ---
@@ -127,6 +126,11 @@ const parseRawDataToRows = (text) => {
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(text, 'text/html');
+            
+            // FIX: Remove scripts and styles to prevent code leakage into data
+            const scripts = doc.querySelectorAll('script, style, noscript, iframe');
+            scripts.forEach(n => n.remove());
+
             const trs = Array.from(doc.querySelectorAll('tr'));
             rows = trs.map(tr => 
                 Array.from(tr.querySelectorAll('td, th')).map(cell => cell.innerText.trim())
@@ -156,12 +160,12 @@ const parseRawDataToRows = (text) => {
 };
 
 const parsePortfolioRows = (rows) => {
-    // Validation check for HTML/JS garbage
+    // Validation check for HTML/JS garbage that might have slipped through
     const garbageCheck = rows.slice(0, 5).some(r => 
         r.some(c => c && (c.includes('function') || c.includes('var ') || c.includes('<!DOCTYPE') || c.includes('window.')))
     );
     if (garbageCheck) {
-        throw new Error("匯入失敗：讀取到的是網頁原始碼而非 CSV 資料。\n請確認 Google Sheet 連結權限已設為「知道連結的人皆可檢視」，且使用正確的 CSV 輸出連結。");
+        throw new Error("匯入失敗：資料包含程式碼片段。\n請確認您複製的是「發布到網路」的 CSV 連結，而非網頁編輯連結。");
     }
 
     if (rows.length < 2) throw new Error("資料內容為空或只有標題");
@@ -184,45 +188,64 @@ const parsePortfolioRows = (rows) => {
     let headerIdx = -1;
     let idx = {};
 
+    // Helper: Find column index, optionally excluding certain keywords
+    // FIX: Added stricter exclusion logic for Date columns when looking for Prices
+    const getIndex = (row, keys, excludeKeys = []) => {
+        const lowerRow = row.map(c => c.toLowerCase());
+        return lowerRow.findIndex(h => {
+            const match = keys.some(k => h.includes(k));
+            const notExcluded = excludeKeys.length === 0 || !excludeKeys.some(ek => h.includes(ek));
+            return match && notExcluded;
+        });
+    };
+
     for(let i=0; i<Math.min(rows.length, 20); i++) {
         const row = rows[i];
         if(!row.length) continue;
-        const lowerRow = row.map(c => c.toLowerCase());
-        const getIndex = (keys) => lowerRow.findIndex(h => keys.some(k => h.includes(k)));
-        const pIdx = getIndex(headerMap.product);
+        
+        const pIdx = getIndex(row, headerMap.product);
         
         if (pIdx > -1) {
             headerIdx = i;
             idx = {
-                client: getIndex(headerMap.client),
+                client: getIndex(row, headerMap.client),
                 product: pIdx,
-                issuer: getIndex(headerMap.issuer),
-                currency: getIndex(headerMap.currency),
-                nominal: getIndex(headerMap.nominal),
-                coupon: getIndex(headerMap.coupon),
-                maturity: getIndex(headerMap.maturity),
-                ki: getIndex(headerMap.ki),
-                ko: getIndex(headerMap.ko),
-                strike: getIndex(headerMap.strike),
-                underlyings: getIndex(headerMap.underlyings),
-                koObservation: getIndex(headerMap.koObservation)
+                issuer: getIndex(row, headerMap.issuer),
+                currency: getIndex(row, headerMap.currency),
+                nominal: getIndex(row, headerMap.nominal),
+                coupon: getIndex(row, headerMap.coupon),
+                maturity: getIndex(row, headerMap.maturity),
+                ki: getIndex(row, headerMap.ki),
+                // FIX: Exclude 'observation', 'date', '日' when looking for KO Price
+                ko: getIndex(row, headerMap.ko, ['observation', 'date', '日', '期', 'start']),
+                strike: getIndex(row, headerMap.strike),
+                underlyings: getIndex(row, headerMap.underlyings),
+                koObservation: getIndex(row, headerMap.koObservation)
             };
             break;
         }
     }
 
     if (headerIdx === -1) {
-         throw new Error(`找不到「產品名稱」欄位。\n\n系統讀取到的第一列內容：\n[${rows[0] ? rows[0].join(', ') : '無資料'}]\n\n請確認 Google Sheet 中包含「產品」或「名稱」欄位。`);
+         throw new Error(`找不到「產品名稱」欄位。\n\n請確認 Google Sheet 中包含「產品」或「名稱」欄位。\n(偵測到的第一列: ${rows[0] ? rows[0].join(',') : '空'})`);
     }
 
     const newClientsMap = new Map();
     const newPositions = [];
 
     // Helper to safely parse percentages (converts 0.7 -> 70)
-    const parsePercent = (val) => {
-        const num = parseFloat(val);
-        if (isNaN(num)) return 0;
-        return num < 5 ? num * 100 : num; // Smart fix for decimal percentages
+    // FIX: If value > 200, assume it's a year (e.g. 2025) or invalid, default to 100
+    const parsePercent = (val, defaultVal) => {
+        if (!val) return defaultVal;
+        const str = val.toString().replace(/[%]/g, '');
+        const num = parseFloat(str);
+        if (isNaN(num)) return defaultVal;
+        
+        // If > 200, it's likely a year (2025) misread as a price, ignore it
+        if (num > 200) return defaultVal;
+
+        // Heuristic: If < 5, assume it's a decimal (0.7 -> 70). 
+        return num < 5 ? num * 100 : num; 
     };
 
     for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -241,6 +264,7 @@ const parsePortfolioRows = (rows) => {
         if (underlyingRaw) {
             const pairs = underlyingRaw.split(/[\/;|\n]+/).map(s => s.trim());
             pairs.forEach(p => {
+                // Parsing "Ticker EntryPrice" or "Ticker Name EntryPrice"
                 const parts = p.split(/[:\s]+/).filter(Boolean);
                 if (parts.length >= 1) {
                     const ticker = parts[0].toUpperCase();
@@ -273,9 +297,10 @@ const parsePortfolioRows = (rows) => {
             nominal: idx.nominal > -1 ? (parseFloat(row[idx.nominal].replace(/,/g, '')) || 0) : 0,
             couponRate: idx.coupon > -1 ? (parseFloat(row[idx.coupon].replace(/[%]/g, '')) || 0) : 0,
             maturityDate: idx.maturity > -1 ? row[idx.maturity] : "",
-            kiLevel: idx.ki > -1 ? (parsePercent(row[idx.ki]) || 60) : 60,
-            koLevel: idx.ko > -1 ? (parsePercent(row[idx.ko]) || 100) : 100,
-            strikeLevel: idx.strike > -1 ? (parsePercent(row[idx.strike]) || 100) : 100,
+            // Use safe parser for percentages with fallbacks
+            kiLevel: idx.ki > -1 ? parsePercent(row[idx.ki], 60) : 60,
+            koLevel: idx.ko > -1 ? parsePercent(row[idx.ko], 100) : 100,
+            strikeLevel: idx.strike > -1 ? parsePercent(row[idx.strike], 100) : 100,
             underlyings,
             strikeDate: "",
             koObservationStartDate: idx.koObservation > -1 ? row[idx.koObservation] : "",
@@ -388,14 +413,13 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const textAreaRef = useRef(null);
   useEffect(() => {
     if (isOpen) {
-      // Modified: "連結標的" column fixed to export "Ticker EntryPrice" ONLY, suitable for re-import.
+      // FIXED: Use correct headers for round-trip compatibility
       const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
       const rows = (allPositions || []).map(pos => {
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
         
-        // Generate clean string for re-import: "NVDA 550 / AMD 140"
-        // Removing current price and percentage from this specific column to avoid import errors
+        // FIXED: Only export "Ticker EntryPrice" separated by / for clean re-import
         const allUnderlyingsClean = pos.underlyings.map(u => 
             `${u.ticker} ${u.entryPrice}`
         ).join(' / ');
@@ -412,7 +436,7 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
           pos.kiLevel, 
           pos.koLevel, 
           pos.strikeLevel,
-          allUnderlyingsClean, // CLEAN FORMAT for import compatibility
+          allUnderlyingsClean, 
           calculated.laggard?.ticker || "", 
           calculated.laggard?.currentPrice || 0, 
           calculated.laggard?.entryPrice || 0, 
@@ -720,7 +744,6 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 relative overflow-hidden">
-        {/* Loading Overlay for generation */}
         {isGeneratingShareLink && (
             <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm animate-in fade-in">
                 <div className="animate-spin text-blue-600 mb-2"><RefreshCw size={24} /></div>
@@ -1217,7 +1240,8 @@ const App = () => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // FIXED: Export only Ticker + EntryPrice for re-import compatibility
+      // FIXED: Export CLEAN "Ticker EntryPrice" only for re-import compatibility
+      // Using slash separator to be safe for CSV import parsing logic
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
       ).join(' / ');
@@ -1234,7 +1258,7 @@ const App = () => {
         pos.kiLevel, 
         pos.koLevel, 
         pos.strikeLevel,
-        allUnderlyingsClean, 
+        allUnderlyingsClean, // CLEAN FORMAT
         calculated.laggard?.ticker || "", 
         calculated.laggard?.currentPrice || 0, 
         calculated.laggard?.entryPrice || 0, 
@@ -1415,13 +1439,13 @@ const App = () => {
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
                                     <div className="text-center w-full border-b border-slate-100 pb-2"> 
-                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span> 
+                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span> 
                                         <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span> 
+                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span> 
                                         <div className="text-red-700 font-black text-lg leading-tight truncate w-full"> 
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
@@ -1432,10 +1456,10 @@ const App = () => {
 
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex flex-col gap-1"> 
-                              {/* Table Header */}
-                              <div className="grid grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                              {/* Table Header - Mobile Optimized Layout (5 cols vs 6 cols) */}
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="col-span-2 text-left">標的</span>
-                                  <span className="text-right">現價</span>
+                                  <span className="text-right hidden sm:block">現價</span> {/* Hide separate price col on mobile */}
                                   <span className="text-right text-red-600">KO</span>
                                   <span className="text-right text-slate-500">履約</span>
                                   <span className="text-right text-green-600">KI</span>
@@ -1443,33 +1467,35 @@ const App = () => {
                               {/* Table Rows */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  <div key={u.ticker} className={`grid grid-cols-6 gap-1 sm:gap-2 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-50/50' : ''}`}>
-                                    <div className="col-span-2 flex items-center gap-1 overflow-hidden">
-                                        {/* Memory KO Toggle Button */}
-                                        {!isGuestMode && (
-                                            <button 
-                                                onClick={() => toggleMemoryKO(pos.id, u.ticker)}
-                                                className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`}
-                                                title="手動標記/取消 KO"
-                                            >
-                                                {u.memoryKO && <Check size={10} className="text-white" strokeWidth={4} />}
-                                            </button>
-                                        )}
-                                        {/* Read-only Indicator for Guest */}
-                                        {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
-                                        
-                                        <div className="flex flex-col min-w-0">
+                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-50/50' : ''}`}>
+                                    {/* Mobile: Ticker + Price Stacked to save horizontal space */}
+                                    <div className="col-span-2 flex flex-col min-w-0 justify-center">
+                                        <div className="flex items-center gap-1">
+                                            {!isGuestMode && (
+                                                <button 
+                                                    onClick={() => toggleMemoryKO(pos.id, u.ticker)}
+                                                    className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300'}`}
+                                                >
+                                                    {u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}
+                                                </button>
+                                            )}
                                             <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
-                                            {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                         </div>
+                                        {/* Mobile Price Display */}
+                                        <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                            ${u.currentPrice.toLocaleString()}
+                                        </span>
                                     </div>
 
-                                    <span className={`font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                    {/* Desktop Price Display (Hidden on Mobile) */}
+                                    <span className={`hidden sm:block font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
-                                    <span className="font-mono font-bold text-red-700 text-right text-xs sm:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-xs sm:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-xs sm:text-sm">{u.kiPrice.toFixed(0)}</span>
+
+                                    {/* Barrier Prices - Smaller font on mobile to fit 5-digits */}
+                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] sm:text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-500 text-right text-[10px] sm:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] sm:text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
                                 );
                               })}
