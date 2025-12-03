@@ -3,11 +3,9 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Features:
- * - Taiwan Stock Color Logic (Red=Up/Safe/KO, Green=Down/Danger/KI).
- * - Memory KO: Individual stock KO memory logic with date check.
- * - Layout: List view for underlyings, auto-balanced row height.
- * - Import: Supports Google Sheet with KO Observation Date.
+ * Update:
+ * 1. Export Fixed: Really added 'KO Observation Start Date' to CSV export this time.
+ * 2. All previous features (Taiwan colors, List view, Memory KO) are preserved.
  */
 
 // --- 1. Constants ---
@@ -19,7 +17,6 @@ const INITIAL_POSITIONS = [
     id: 1, clientId: 'c1', productName: "FCN Tech SNMSELN02384", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
     strikeDate: "2024-01-15", koObservationStartDate: "2024-04-15", tenor: "6 個月", maturityDate: "2024-07-15",
     koLevel: 105, kiLevel: 70, strikeLevel: 100,
-    // Initial data now includes memoryKO flag
     underlyings: [{ ticker: "NVDA", entryPrice: 550, memoryKO: false }, { ticker: "AMD", entryPrice: 140, memoryKO: false }, { ticker: "TSLA", entryPrice: 200, memoryKO: false }, { ticker: "MSFT", entryPrice: 400, memoryKO: false }], status: "Active"
   }
 ];
@@ -374,8 +371,8 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const textAreaRef = useRef(null);
   useEffect(() => {
     if (isOpen) {
-      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
-      const rows = allPositions.map(pos => {
+      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+      const rows = (allPositions || []).map(pos => { // Guard against undefined allPositions
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
         return [
@@ -386,14 +383,15 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
           pos.nominal, 
           pos.couponRate, 
           pos.maturityDate, 
+          pos.koObservationStartDate || "", // Handle undefined date
           pos.kiLevel, 
           pos.koLevel, 
           pos.strikeLevel,
-          calculated.laggard.ticker, 
-          calculated.laggard.currentPrice, 
-          calculated.laggard.entryPrice, 
-          calculated.laggard.strikePrice.toFixed(2),
-          calculated.laggard.performance.toFixed(2), 
+          calculated.laggard?.ticker || "", 
+          calculated.laggard?.currentPrice || 0, 
+          calculated.laggard?.entryPrice || 0, 
+          calculated.laggard?.strikePrice?.toFixed(2) || "0.00",
+          calculated.laggard?.performance?.toFixed(2) || "0.00", 
           calculated.riskStatus
         ];
       });
@@ -623,7 +621,10 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
-  const [isGenerating, setIsGenerating] = useState(false); 
+  const [isGenerating, setIsGenerating] = useState(false); // Add local loading state for visual feedback
+
+  // Trigger shortening when modal opens if needed, or assume parent handles it.
+  // Current implementation handles it in App component before opening modal.
 
   const handleCopy = (text) => {
       const success = copyToClipboard(link);
@@ -676,6 +677,9 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
 const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink, isGeneratingShareLink }) => { 
   const [newName, setNewName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  // Track which client is being generated for locally to show spinner only on that button if needed.
+  // For simplicity, we can show a global overlay or just disable buttons.
+  // Let's just disable buttons when generating.
 
   const handleConfirmAdd = (e) => {
     e.preventDefault();
@@ -1181,7 +1185,7 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
@@ -1193,6 +1197,7 @@ const App = () => {
           pos.nominal, 
           pos.couponRate, 
           pos.maturityDate, 
+          pos.koObservationStartDate, // Add KO Observation Date
           pos.kiLevel, 
           pos.koLevel, 
           pos.strikeLevel,
@@ -1234,7 +1239,6 @@ const App = () => {
                     <div className="bg-white p-1.5 rounded shadow-sm text-blue-600"><User size={16} /></div>
                     <select value={activeClientId} onChange={(e) => setActiveClientId(e.target.value)} className="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer appearance-none pr-6 min-w-[120px]">{clients.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>
                     <ChevronDown size={14} className="absolute right-2 text-slate-400 pointer-events-none"/>
-                    {/* --- Share Button Restored Here --- */}
                     <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="分享給投資人"><Share2 size={16} /></button>
                     <button onClick={() => setIsClientManagerOpen(true)} className="ml-1 text-slate-400 hover:text-blue-600"><Edit3 size={14} /></button>
                 </div>
@@ -1391,83 +1395,83 @@ const App = () => {
                                 </div>
                             </div>
                           </td>
-  
-                            <td className="px-4 py-2 align-middle"> 
-                              <div className="flex flex-col gap-1"> 
-                                {/* Table Header */}
-                                <div className="grid grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
-                                    <span className="col-span-2 text-left">標的</span>
-                                    <span className="text-right">現價</span>
-                                    <span className="text-right text-red-600">KO</span>
-                                    <span className="text-right text-slate-500">履約</span>
-                                    <span className="text-right text-green-600">KI</span>
-                                </div>
-                                {/* Table Rows */}
-                                {(pos.underlyingDetails || []).map((u) => {
-                                  return (
-                                    <div key={u.ticker} className={`grid grid-cols-6 gap-1 sm:gap-2 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-50/50' : ''}`}>
-                                      <div className="col-span-2 flex items-center gap-1 overflow-hidden">
-                                          {/* Memory KO Toggle Button */}
-                                          {!isGuestMode && (
-                                              <button 
-                                                  onClick={() => toggleMemoryKO(pos.id, u.ticker)}
-                                                  className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`}
-                                                  title="手動標記/取消 KO"
-                                              >
-                                                  {u.memoryKO && <Check size={10} className="text-white" strokeWidth={4} />}
-                                              </button>
-                                          )}
-                                          {/* Read-only Indicator for Guest */}
-                                          {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
-                                          
-                                          <div className="flex flex-col min-w-0">
-                                              <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
-                                              {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
-                                          </div>
-                                      </div>
-  
-                                      <span className={`font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
-                                          {u.currentPrice.toLocaleString()}
-                                      </span>
-                                      <span className="font-mono font-bold text-red-700 text-right text-xs sm:text-sm">{u.koPrice.toFixed(0)}</span>
-                                      <span className="font-mono text-slate-500 text-right text-xs sm:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                      <span className="font-mono font-bold text-green-700 text-right text-xs sm:text-sm">{u.kiPrice.toFixed(0)}</span>
-                                    </div>
-                                  );
-                                })}
+
+                          <td className="px-4 py-2 align-middle"> 
+                            <div className="flex flex-col gap-1"> 
+                              {/* Table Header */}
+                              <div className="grid grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                                  <span className="col-span-2 text-left">標的</span>
+                                  <span className="text-right">現價</span>
+                                  <span className="text-right text-red-600">KO</span>
+                                  <span className="text-right text-slate-500">履約</span>
+                                  <span className="text-right text-green-600">KI</span>
                               </div>
-                            </td>
-                            <td className="px-4 py-2 text-right align-middle"> 
-                              {!isGuestMode && (
-                                  <div className="flex flex-col items-end gap-2 h-full justify-center">
-                                      <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
-                                      <button onClick={() => deletePosition(pos.id)} className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="刪除部位"><Trash2 size={18} /></button>
+                              {/* Table Rows */}
+                              {(pos.underlyingDetails || []).map((u) => {
+                                return (
+                                  <div key={u.ticker} className={`grid grid-cols-6 gap-1 sm:gap-2 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-50/50' : ''}`}>
+                                    <div className="col-span-2 flex items-center gap-1 overflow-hidden">
+                                        {/* Memory KO Toggle Button */}
+                                        {!isGuestMode && (
+                                            <button 
+                                                onClick={() => toggleMemoryKO(pos.id, u.ticker)}
+                                                className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`}
+                                                title="手動標記/取消 KO"
+                                            >
+                                                {u.memoryKO && <Check size={10} className="text-white" strokeWidth={4} />}
+                                            </button>
+                                        )}
+                                        {/* Read-only Indicator for Guest */}
+                                        {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
+                                        
+                                        <div className="flex flex-col min-w-0">
+                                            <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                            {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                        </div>
+                                    </div>
+
+                                    <span className={`font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                        {u.currentPrice.toLocaleString()}
+                                    </span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-xs sm:text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-500 text-right text-xs sm:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-xs sm:text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                    })}
-                    {processedPositions.length === 0 && (
-                      <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-400">目前沒有部位，請點擊右上角「新增」</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-right align-middle"> 
+                            {!isGuestMode && (
+                                <div className="flex flex-col items-end gap-2 h-full justify-center">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
+                                    <button onClick={() => deletePosition(pos.id)} className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="刪除部位"><Trash2 size={18} /></button>
+                                </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                  })}
+                  {processedPositions.length === 0 && (
+                    <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-400">目前沒有部位，請點擊右上角「新增」</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-        </main>
-  
-        {/* Modals */}
-        {isDataSyncModalOpen && <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} />}
-        {isAddModalOpen && <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />}
-        {isClientManagerOpen && <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} isGeneratingShareLink={isGeneratingShareLink} />}
-        {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} allPositions={allPositions} clients={clients} marketPrices={marketPrices} calculateRisk={calculateRisk} />}
-        {isSettingsModalOpen && <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} savedPassword={savedPassword} setSavedPassword={setSavedPassword} setIsUnlocked={setIsUnlocked} />}
-        {isPasswordPromptOpen && <PasswordPromptModal isOpen={isPasswordPromptOpen} onConfirm={handleUnlock} onCancel={() => { setIsPasswordPromptOpen(false); setPendingAction(null); }} />}
-        {isShareLinkModalOpen && <ShareLinkModal isOpen={isShareLinkModalOpen} onClose={() => setIsShareLinkModalOpen(false)} link={currentShareData.url} clientName={currentShareData.name} />}
-      </div>
-    );
-  };
-  
-  export default App;
+        </div>
+      </main>
+
+      {/* Modals */}
+      {isDataSyncModalOpen && <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} />}
+      {isAddModalOpen && <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />}
+      {isClientManagerOpen && <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} isGeneratingShareLink={isGeneratingShareLink} />}
+      {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} allPositions={allPositions} clients={clients} marketPrices={marketPrices} calculateRisk={calculateRisk} />}
+      {isSettingsModalOpen && <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} savedPassword={savedPassword} setSavedPassword={setSavedPassword} setIsUnlocked={setIsUnlocked} />}
+      {isPasswordPromptOpen && <PasswordPromptModal isOpen={isPasswordPromptOpen} onConfirm={handleUnlock} onCancel={() => { setIsPasswordPromptOpen(false); setPendingAction(null); }} />}
+      {isShareLinkModalOpen && <ShareLinkModal isOpen={isShareLinkModalOpen} onClose={() => setIsShareLinkModalOpen(false)} link={currentShareData.url} clientName={currentShareData.name} />}
+    </div>
+  );
+};
+
+export default App;
