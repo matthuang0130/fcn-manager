@@ -3,9 +3,11 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Update:
- * 1. Fixed HTML structure errors (mismatched closing tags).
- * 2. All features preserved: Taiwan Stock Colors, List View, URL Shortening, Responsive Layout.
+ * Features:
+ * - Taiwan Stock Color Logic (Red=Up/Safe/KO, Green=Down/Danger/KI).
+ * - Memory KO: Individual stock KO memory logic with date check.
+ * - Layout: List view for underlyings, auto-balanced row height.
+ * - Import: Supports Google Sheet with KO Observation Date.
  */
 
 // --- 1. Constants ---
@@ -17,7 +19,8 @@ const INITIAL_POSITIONS = [
     id: 1, clientId: 'c1', productName: "FCN Tech SNMSELN02384", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
     strikeDate: "2024-01-15", koObservationStartDate: "2024-04-15", tenor: "6 個月", maturityDate: "2024-07-15",
     koLevel: 105, kiLevel: 70, strikeLevel: 100,
-    underlyings: [{ ticker: "NVDA", entryPrice: 550 }, { ticker: "AMD", entryPrice: 140 }, { ticker: "TSLA", entryPrice: 200 }, { ticker: "MSFT", entryPrice: 400 }], status: "Active"
+    // Initial data now includes memoryKO flag
+    underlyings: [{ ticker: "NVDA", entryPrice: 550, memoryKO: false }, { ticker: "AMD", entryPrice: 140, memoryKO: false }, { ticker: "TSLA", entryPrice: 200, memoryKO: false }, { ticker: "MSFT", entryPrice: 400, memoryKO: false }], status: "Active"
   }
 ];
 
@@ -102,7 +105,7 @@ const minifyData = (payload) => ({
     p: payload.positions.map(p => [
         p.productName, p.issuer, p.nominal, p.currency, p.couponRate, p.koLevel, p.kiLevel, p.strikeLevel, 
         p.strikeDate, p.koObservationStartDate, p.maturityDate, p.tenor, 
-        p.underlyings.map(u => [u.ticker, u.entryPrice])
+        p.underlyings.map(u => [u.ticker, u.entryPrice, u.memoryKO ? 1 : 0])
     ]), m: payload.prices
 });
 
@@ -114,7 +117,7 @@ const unminifyData = (minified) => {
             id: index, productName: arr[0], issuer: arr[1], nominal: arr[2], currency: arr[3],
             couponRate: arr[4], koLevel: arr[5], kiLevel: arr[6], strikeLevel: arr[7],
             strikeDate: arr[8], koObservationStartDate: arr[9], maturityDate: arr[10], tenor: arr[11],
-            underlyings: arr[12].map(u => ({ ticker: u[0], entryPrice: u[1] })), status: "Active", clientId: 'guest'
+            underlyings: arr[12].map(u => ({ ticker: u[0], entryPrice: u[1], memoryKO: !!u[2] })), status: "Active", clientId: 'guest'
         }))
     };
 };
@@ -228,15 +231,24 @@ const parsePortfolioRows = (rows) => {
                 if (parts.length >= 1) {
                     const ticker = parts[0].toUpperCase();
                     let entryPrice = 100; 
+                    let name = "";
+
                     if (parts.length >= 2) {
                         const priceStr = parts[parts.length-1].replace(/,/g, '');
-                        if(!isNaN(parseFloat(priceStr))) entryPrice = parseFloat(priceStr);
+                        const parsedPrice = parseFloat(priceStr);
+
+                        if(!isNaN(parsedPrice)) {
+                            entryPrice = parsedPrice;
+                            if (parts.length > 2) {
+                                name = parts.slice(1, parts.length - 1).join(' ');
+                            }
+                        }
                     }
-                    underlyings.push({ ticker, entryPrice });
+                    underlyings.push({ ticker, entryPrice, name, memoryKO: false });
                 }
             });
         }
-        if (underlyings.length === 0) underlyings.push({ ticker: "UNKNOWN", entryPrice: 100 });
+        if (underlyings.length === 0) underlyings.push({ ticker: "UNKNOWN", entryPrice: 100, memoryKO: false });
 
         const pos = {
             id: Date.now() + i,
@@ -611,10 +623,7 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
-  const [isGenerating, setIsGenerating] = useState(false); // Add local loading state for visual feedback
-
-  // Trigger shortening when modal opens if needed, or assume parent handles it.
-  // Current implementation handles it in App component before opening modal.
+  const [isGenerating, setIsGenerating] = useState(false); 
 
   const handleCopy = (text) => {
       const success = copyToClipboard(link);
@@ -664,12 +673,9 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   );
 };
 
-const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink, isGeneratingShareLink }) => { // Accept isGeneratingShareLink
+const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink, isGeneratingShareLink }) => { 
   const [newName, setNewName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
-  // Track which client is being generated for locally to show spinner only on that button if needed.
-  // For simplicity, we can show a global overlay or just disable buttons.
-  // Let's just disable buttons when generating.
 
   const handleConfirmAdd = (e) => {
     e.preventDefault();
@@ -684,7 +690,6 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 relative overflow-hidden">
-        {/* Loading Overlay for generation */}
         {isGeneratingShareLink && (
             <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm animate-in fade-in">
                 <div className="animate-spin text-blue-600 mb-2"><RefreshCw size={24} /></div>
@@ -890,6 +895,61 @@ const App = () => {
       }
   };
 
+  // Add Effect to Auto-update Memory KO status based on prices
+  useEffect(() => {
+      const today = new Date().toISOString().split('T')[0];
+      let hasUpdates = false;
+      
+      const updatedPositions = allPositions.map(pos => {
+          let posUpdated = false;
+          const newUnderlyings = pos.underlyings.map(u => {
+              // Get current price (either from marketPrices or fallback to entryPrice)
+              const currentPrice = (() => {
+                   const cleanTicker = u.ticker.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
+                   if (marketPrices[u.ticker] !== undefined) return marketPrices[u.ticker];
+                   // Try finding by clean ticker if exact match fails
+                   const foundKey = Object.keys(marketPrices).find(k => k.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim() === cleanTicker);
+                   return foundKey ? marketPrices[foundKey] : u.entryPrice;
+              })();
+
+              // Calculate KO Price
+              const koPrice = u.entryPrice * (pos.koLevel / 100);
+              
+              // Logic: If Price >= KO AND Today >= ObservationDate AND not already marked
+              if (!u.memoryKO && currentPrice >= koPrice && pos.koObservationStartDate && today >= pos.koObservationStartDate) {
+                  posUpdated = true;
+                  hasUpdates = true;
+                  return { ...u, memoryKO: true };
+              }
+              return u;
+          });
+
+          if (posUpdated) {
+              return { ...pos, underlyings: newUnderlyings };
+          }
+          return pos;
+      });
+
+      if (hasUpdates) {
+          setAllPositions(updatedPositions);
+      }
+  }, [marketPrices, allPositions]); // Runs when prices update or positions load
+
+  // Manual Toggle for Memory KO
+  const toggleMemoryKO = (positionId, ticker) => {
+      checkAuth(() => {
+          setAllPositions(prev => prev.map(p => {
+              if(p.id !== positionId) return p;
+              return {
+                  ...p,
+                  underlyings: p.underlyings.map(u => 
+                      u.ticker === ticker ? { ...u, memoryKO: !u.memoryKO } : u
+                  )
+              };
+          }));
+      });
+  };
+
   useEffect(() => {
       const hash = window.location.hash;
       if (hash && hash.startsWith('#share=')) {
@@ -955,6 +1015,10 @@ const App = () => {
 
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
+    
+    // Check if all underlyings have touched KO
+    const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
+
     const underlyingDetails = (pos.underlyings || []).map(u => {
       const marketPrice = getPriceForTicker(u.ticker);
       const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
@@ -965,23 +1029,20 @@ const App = () => {
     });
     const monthlyCoupon = Math.round((pos.nominal * (pos.couponRate / 100)) / 12);
     
-    const today = new Date().toISOString().split('T')[0];
-    
     let riskStatus = "觀察中", statusColor = "bg-blue-100 text-blue-800";
-    if (minPerf <= pos.kiLevel) { 
+    
+    // New Priority: Memory KO takes precedence if ALL conditions met
+    if (allTouchedKO) {
+        riskStatus = "達成 KO";
+        statusColor = "bg-red-100 text-red-800 font-bold border border-red-300";
+    } else if (minPerf <= pos.kiLevel) { 
         riskStatus = "已觸及 KI"; 
         statusColor = "bg-green-100 text-green-800 font-bold border border-green-300"; 
-    } 
-    else if (minPerf <= pos.kiLevel + 5) { 
+    } else if (minPerf <= pos.kiLevel + 5) { 
         riskStatus = "瀕臨 KI"; 
         statusColor = "bg-orange-100 text-orange-800 font-bold"; 
     } 
-    else if (minPerf >= pos.koLevel) { 
-        if (pos.koObservationStartDate && today >= pos.koObservationStartDate) {
-            riskStatus = "達成 KO"; 
-            statusColor = "bg-red-100 text-red-800 font-bold border border-red-300"; 
-        }
-    }
+    
     return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon };
   };
 
@@ -1071,7 +1132,7 @@ const App = () => {
   
   const handleSavePosition = (e) => {
     e.preventDefault();
-    const validUnderlyings = formUnderlyings.filter(u => u.ticker.trim() !== "").map(u => ({ ticker: u.ticker.toUpperCase(), entryPrice: parseFloat(u.entryPrice) }));
+    const validUnderlyings = formUnderlyings.filter(u => u.ticker.trim() !== "").map(u => ({ ticker: u.ticker.toUpperCase(), entryPrice: parseFloat(u.entryPrice), memoryKO: u.memoryKO || false }));
     if (validUnderlyings.length === 0) return;
     const updatedPrices = { ...marketPrices };
     validUnderlyings.forEach(u => { if (getPriceForTicker(u.ticker) === undefined) updatedPrices[u.ticker] = u.entryPrice; });
@@ -1117,7 +1178,7 @@ const App = () => {
 
   const handleExitGuestMode = () => { if(confirm("確定要登出嗎？")) { setIsGuestMode(false); setGuestData(null); setViewMode('landing'); window.history.replaceState(null, '', window.location.pathname); } };
   const handleOpenAddModal = () => { checkAuth(() => { setEditId(null); setFormPosition(DEFAULT_FORM_STATE); setFormUnderlyings([{ id: Date.now(), ticker: "", entryPrice: 0 }]); setIsAddModalOpen(true); }); };
-  const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx }))); setIsAddModalOpen(true); }); };
+  const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
     const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
@@ -1173,6 +1234,7 @@ const App = () => {
                     <div className="bg-white p-1.5 rounded shadow-sm text-blue-600"><User size={16} /></div>
                     <select value={activeClientId} onChange={(e) => setActiveClientId(e.target.value)} className="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer appearance-none pr-6 min-w-[120px]">{clients.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>
                     <ChevronDown size={14} className="absolute right-2 text-slate-400 pointer-events-none"/>
+                    {/* --- Share Button Restored Here --- */}
                     <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="分享給投資人"><Share2 size={16} /></button>
                     <button onClick={() => setIsClientManagerOpen(true)} className="ml-1 text-slate-400 hover:text-blue-600"><Edit3 size={14} /></button>
                 </div>
@@ -1329,64 +1391,83 @@ const App = () => {
                                 </div>
                             </div>
                           </td>
-
-                          <td className="px-4 py-2 align-middle"> 
-                            <div className="flex flex-col gap-1"> 
-                              {/* Table Header */}
-                              <div className="grid grid-cols-5 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
-                                  <span className="text-left">標的</span>
-                                  <span className="text-right">現價</span>
-                                  <span className="text-right text-red-600">KO</span>
-                                  <span className="text-right text-slate-500">履約</span>
-                                  <span className="text-right text-green-600">KI</span>
-                              </div>
-                              {/* Table Rows */}
-                              {(pos.underlyingDetails || []).map((u) => {
-                                return (
-                                  <div key={u.ticker} className="grid grid-cols-5 gap-1 sm:gap-2 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded">
-                                    <span className="font-black text-slate-800 text-xs sm:text-sm truncate">{u.ticker}</span>
-                                    <span className={`font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
-                                        {u.currentPrice.toLocaleString()}
-                                    </span>
-                                    <span className="font-mono font-bold text-red-700 text-right text-xs sm:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-xs sm:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-xs sm:text-sm">{u.kiPrice.toFixed(0)}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 text-right align-middle"> 
-                            {!isGuestMode && (
-                                <div className="flex flex-col items-end gap-2 h-full justify-center">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
-                                    <button onClick={() => deletePosition(pos.id)} className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="刪除部位"><Trash2 size={18} /></button>
+  
+                            <td className="px-4 py-2 align-middle"> 
+                              <div className="flex flex-col gap-1"> 
+                                {/* Table Header */}
+                                <div className="grid grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                                    <span className="col-span-2 text-left">標的</span>
+                                    <span className="text-right">現價</span>
+                                    <span className="text-right text-red-600">KO</span>
+                                    <span className="text-right text-slate-500">履約</span>
+                                    <span className="text-right text-green-600">KI</span>
                                 </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                  })}
-                  {processedPositions.length === 0 && (
-                    <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-400">目前沒有部位，請點擊右上角「新增」</td></tr>
-                  )}
-                </tbody>
-              </table>
+                                {/* Table Rows */}
+                                {(pos.underlyingDetails || []).map((u) => {
+                                  return (
+                                    <div key={u.ticker} className={`grid grid-cols-6 gap-1 sm:gap-2 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-50/50' : ''}`}>
+                                      <div className="col-span-2 flex items-center gap-1 overflow-hidden">
+                                          {/* Memory KO Toggle Button */}
+                                          {!isGuestMode && (
+                                              <button 
+                                                  onClick={() => toggleMemoryKO(pos.id, u.ticker)}
+                                                  className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`}
+                                                  title="手動標記/取消 KO"
+                                              >
+                                                  {u.memoryKO && <Check size={10} className="text-white" strokeWidth={4} />}
+                                              </button>
+                                          )}
+                                          {/* Read-only Indicator for Guest */}
+                                          {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
+                                          
+                                          <div className="flex flex-col min-w-0">
+                                              <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                              {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                          </div>
+                                      </div>
+  
+                                      <span className={`font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                          {u.currentPrice.toLocaleString()}
+                                      </span>
+                                      <span className="font-mono font-bold text-red-700 text-right text-xs sm:text-sm">{u.koPrice.toFixed(0)}</span>
+                                      <span className="font-mono text-slate-500 text-right text-xs sm:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                      <span className="font-mono font-bold text-green-700 text-right text-xs sm:text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 text-right align-middle"> 
+                              {!isGuestMode && (
+                                  <div className="flex flex-col items-end gap-2 h-full justify-center">
+                                      <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
+                                      <button onClick={() => deletePosition(pos.id)} className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="刪除部位"><Trash2 size={18} /></button>
+                                  </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                    })}
+                    {processedPositions.length === 0 && (
+                      <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-400">目前沒有部位，請點擊右上角「新增」</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      </main>
-
-      {/* Modals */}
-      {isDataSyncModalOpen && <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} />}
-      {isAddModalOpen && <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />}
-      {isClientManagerOpen && <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} isGeneratingShareLink={isGeneratingShareLink} />}
-      {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} allPositions={allPositions} clients={clients} marketPrices={marketPrices} calculateRisk={calculateRisk} />}
-      {isSettingsModalOpen && <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} savedPassword={savedPassword} setSavedPassword={setSavedPassword} setIsUnlocked={setIsUnlocked} />}
-      {isPasswordPromptOpen && <PasswordPromptModal isOpen={isPasswordPromptOpen} onConfirm={handleUnlock} onCancel={() => { setIsPasswordPromptOpen(false); setPendingAction(null); }} />}
-      {isShareLinkModalOpen && <ShareLinkModal isOpen={isShareLinkModalOpen} onClose={() => setIsShareLinkModalOpen(false)} link={currentShareData.url} clientName={currentShareData.name} />}
-    </div>
-  );
-};
-
-export default App;
+        </main>
+  
+        {/* Modals */}
+        {isDataSyncModalOpen && <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} />}
+        {isAddModalOpen && <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />}
+        {isClientManagerOpen && <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} isGeneratingShareLink={isGeneratingShareLink} />}
+        {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} allPositions={allPositions} clients={clients} marketPrices={marketPrices} calculateRisk={calculateRisk} />}
+        {isSettingsModalOpen && <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} savedPassword={savedPassword} setSavedPassword={setSavedPassword} setIsUnlocked={setIsUnlocked} />}
+        {isPasswordPromptOpen && <PasswordPromptModal isOpen={isPasswordPromptOpen} onConfirm={handleUnlock} onCancel={() => { setIsPasswordPromptOpen(false); setPendingAction(null); }} />}
+        {isShareLinkModalOpen && <ShareLinkModal isOpen={isShareLinkModalOpen} onClose={() => setIsShareLinkModalOpen(false)} link={currentShareData.url} clientName={currentShareData.name} />}
+      </div>
+    );
+  };
+  
+  export default App;
