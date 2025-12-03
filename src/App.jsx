@@ -2,10 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Update:
- * 1. Export Fixed: Really added 'KO Observation Start Date' to CSV export this time.
- * 2. All previous features (Taiwan colors, List view, Memory KO) are preserved.
+ * FCN 投資組合管理系統 (Final Production Version - Fixed)
+ * Fixes: Removed duplicate component declarations.
+ * Features:
+ * - Taiwan Stock Color Logic (Red=Up/Safe/KO, Green=Down/Danger/KI).
+ * - Memory KO: Individual stock KO memory logic with date check.
+ * - Layout: List view for underlyings, auto-balanced row height.
+ * - Import/Export: Full support for Google Sheet and CSV with all details.
  */
 
 // --- 1. Constants ---
@@ -371,10 +374,15 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const textAreaRef = useRef(null);
   useEffect(() => {
     if (isOpen) {
-      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
-      const rows = (allPositions || []).map(pos => { // Guard against undefined allPositions
+      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "所有標的明細 (代碼/現價/進場/表現)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+      const rows = allPositions.map(pos => {
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
+        
+        const allUnderlyingsDetail = calculated.underlyingDetails.map(u => 
+            `${u.ticker}:$${u.currentPrice}(${u.performance.toFixed(1)}%)`
+        ).join(' | ');
+
         return [
           clientName, 
           pos.productName, 
@@ -383,10 +391,11 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
           pos.nominal, 
           pos.couponRate, 
           pos.maturityDate, 
-          pos.koObservationStartDate || "", // Handle undefined date
+          pos.koObservationStartDate || "", 
           pos.kiLevel, 
           pos.koLevel, 
           pos.strikeLevel,
+          allUnderlyingsDetail, 
           calculated.laggard?.ticker || "", 
           calculated.laggard?.currentPrice || 0, 
           calculated.laggard?.entryPrice || 0, 
@@ -1185,28 +1194,35 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "所有標的明細 (代碼:現價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
+      
+      // Generate detailed string for all underlyings
+      const allUnderlyingsDetail = calculated.underlyingDetails.map(u => 
+          `${u.ticker}:$${u.currentPrice}(${u.performance.toFixed(1)}%)`
+      ).join(' | ');
+
       return [
-          clientName, 
-          pos.productName, 
-          pos.issuer, 
-          pos.currency, 
-          pos.nominal, 
-          pos.couponRate, 
-          pos.maturityDate, 
-          pos.koObservationStartDate, // Add KO Observation Date
-          pos.kiLevel, 
-          pos.koLevel, 
-          pos.strikeLevel,
-          calculated.laggard.ticker, 
-          calculated.laggard.currentPrice, 
-          calculated.laggard.entryPrice, 
-          calculated.laggard.strikePrice.toFixed(2),
-          calculated.laggard.performance.toFixed(2), 
-          calculated.riskStatus
+        clientName, 
+        pos.productName, 
+        pos.issuer, 
+        pos.currency, 
+        pos.nominal, 
+        pos.couponRate, 
+        pos.maturityDate, 
+        pos.koObservationStartDate || "", 
+        pos.kiLevel, 
+        pos.koLevel, 
+        pos.strikeLevel,
+        allUnderlyingsDetail, 
+        calculated.laggard?.ticker || "", 
+        calculated.laggard?.currentPrice || 0, 
+        calculated.laggard?.entryPrice || 0, 
+        calculated.laggard?.strikePrice?.toFixed(2) || "0.00",
+        calculated.laggard?.performance?.toFixed(2) || "0.00", 
+        calculated.riskStatus
       ];
     });
     const csvString = [headers.join(','), ...rows.map(row => row.map(item => `"${String(item).replace(/"/g, '""')}"`).join(','))].join('\n');
