@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Production Version - Fixed)
- * Fixes v8.1:
- * 1. Export Logic: "Underlying Assets" now exports as "Ticker EntryPrice" (clean format) to ensure correct re-import.
- * 2. Mobile Layout: Added min-width to underlying list to prevent text overlapping on small screens.
- * Features: All previous features (Memory KO, Taiwan Colors, etc.) are preserved.
+ * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
+ * Fixes v8.3:
+ * 1. Export/Import Round-trip Fix:
+ * - The "Underlying Assets" column in CSV now only exports "Ticker EntryPrice" (e.g., "NVDA 550 / AMD 140").
+ * - Removed Current Price & Percentage from this specific column to prevent import parsing errors.
+ * 2. Mobile Layout: Maintained the optimized stacked layout for small screens.
  */
 
 // --- 1. Constants ---
@@ -18,7 +19,7 @@ const INITIAL_POSITIONS = [
     id: 1, clientId: 'c1', productName: "FCN Tech SNMSELN02384", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
     strikeDate: "2024-01-15", koObservationStartDate: "2024-04-15", tenor: "6 個月", maturityDate: "2024-07-15",
     koLevel: 105, kiLevel: 70, strikeLevel: 100,
-    underlyings: [{ ticker: "NVDA", entryPrice: 550, memoryKO: false }, { ticker: "AMD", entryPrice: 140, memoryKO: false }, { ticker: "TSLA", entryPrice: 200 }, { ticker: "MSFT", entryPrice: 400, memoryKO: false }], status: "Active"
+    underlyings: [{ ticker: "NVDA", entryPrice: 550, memoryKO: false }, { ticker: "AMD", entryPrice: 140, memoryKO: false }, { ticker: "TSLA", entryPrice: 200, memoryKO: false }, { ticker: "MSFT", entryPrice: 400, memoryKO: false }], status: "Active"
   }
 ];
 
@@ -155,6 +156,14 @@ const parseRawDataToRows = (text) => {
 };
 
 const parsePortfolioRows = (rows) => {
+    // Validation check for HTML/JS garbage
+    const garbageCheck = rows.slice(0, 5).some(r => 
+        r.some(c => c && (c.includes('function') || c.includes('var ') || c.includes('<!DOCTYPE') || c.includes('window.')))
+    );
+    if (garbageCheck) {
+        throw new Error("匯入失敗：讀取到的是網頁原始碼而非 CSV 資料。\n請確認 Google Sheet 連結權限已設為「知道連結的人皆可檢視」，且使用正確的 CSV 輸出連結。");
+    }
+
     if (rows.length < 2) throw new Error("資料內容為空或只有標題");
     
     const headerMap = {
@@ -379,13 +388,14 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const textAreaRef = useRef(null);
   useEffect(() => {
     if (isOpen) {
-      // Modified: "連結標的" column fixed to export "Ticker EntryPrice"
+      // Modified: "連結標的" column fixed to export "Ticker EntryPrice" ONLY, suitable for re-import.
       const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
       const rows = (allPositions || []).map(pos => {
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
         
         // Generate clean string for re-import: "NVDA 550 / AMD 140"
+        // Removing current price and percentage from this specific column to avoid import errors
         const allUnderlyingsClean = pos.underlyings.map(u => 
             `${u.ticker} ${u.entryPrice}`
         ).join(' / ');
@@ -402,7 +412,7 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
           pos.kiLevel, 
           pos.koLevel, 
           pos.strikeLevel,
-          allUnderlyingsClean, // Fixed export format
+          allUnderlyingsClean, // CLEAN FORMAT for import compatibility
           calculated.laggard?.ticker || "", 
           calculated.laggard?.currentPrice || 0, 
           calculated.laggard?.entryPrice || 0, 
@@ -634,7 +644,6 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
   );
 };
 
-// ... ShareLinkModal, ExportModal, ClientManagerModal ... (Unchanged logic, kept for context)
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
@@ -1208,7 +1217,7 @@ const App = () => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // Generate clean string for re-import: "NVDA 550 / AMD 140"
+      // FIXED: Export only Ticker + EntryPrice for re-import compatibility
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
       ).join(' / ');
@@ -1225,7 +1234,7 @@ const App = () => {
         pos.kiLevel, 
         pos.koLevel, 
         pos.strikeLevel,
-        allUnderlyingsClean, // Fixed export format
+        allUnderlyingsClean, 
         calculated.laggard?.ticker || "", 
         calculated.laggard?.currentPrice || 0, 
         calculated.laggard?.entryPrice || 0, 
@@ -1406,13 +1415,13 @@ const App = () => {
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
                                     <div className="text-center w-full border-b border-slate-100 pb-2"> 
-                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span> 
+                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span> 
                                         <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span> 
+                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span> 
                                         <div className="text-red-700 font-black text-lg leading-tight truncate w-full"> 
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
@@ -1422,53 +1431,45 @@ const App = () => {
                           </td>
 
                           <td className="px-4 py-2 align-middle"> 
-                            <div className="flex flex-col gap-1 min-w-[320px]"> {/* Added min-w to prevent squeezing on mobile */}
-                              {/* Table Header - Optimized for Mobile */}
-                              <div className="grid grid-cols-6 gap-1 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
-                                  <span className="col-span-2 text-left">標的 / 現價</span>
-                                  {/* Mobile: Stacked Layout Headers are hidden or implied, mostly for Desktop alignment */}
-                                  <span className="text-right hidden sm:block">現價</span>
+                            <div className="flex flex-col gap-1"> 
+                              {/* Table Header */}
+                              <div className="grid grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                                  <span className="col-span-2 text-left">標的</span>
+                                  <span className="text-right">現價</span>
                                   <span className="text-right text-red-600">KO</span>
                                   <span className="text-right text-slate-500">履約</span>
                                   <span className="text-right text-green-600">KI</span>
                               </div>
-                              
                               {/* Table Rows */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  <div key={u.ticker} className={`grid grid-cols-6 gap-1 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-50/50' : ''}`}>
-                                    
-                                    {/* Mobile: Ticker and Current Price in First Column Block */}
-                                    <div className="col-span-2 sm:col-span-2 flex flex-col justify-center min-w-0">
-                                        <div className="flex items-center gap-1">
-                                            {!isGuestMode && (
-                                                <button 
-                                                    onClick={() => toggleMemoryKO(pos.id, u.ticker)}
-                                                    className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300'}`}
-                                                >
-                                                    {u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}
-                                                </button>
-                                            )}
-                                            <span className={`font-black text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
-                                        </div>
+                                  <div key={u.ticker} className={`grid grid-cols-6 gap-1 sm:gap-2 items-center text-xs sm:text-sm border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-50/50' : ''}`}>
+                                    <div className="col-span-2 flex items-center gap-1 overflow-hidden">
+                                        {/* Memory KO Toggle Button */}
+                                        {!isGuestMode && (
+                                            <button 
+                                                onClick={() => toggleMemoryKO(pos.id, u.ticker)}
+                                                className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`}
+                                                title="手動標記/取消 KO"
+                                            >
+                                                {u.memoryKO && <Check size={10} className="text-white" strokeWidth={4} />}
+                                            </button>
+                                        )}
+                                        {/* Read-only Indicator for Guest */}
+                                        {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
                                         
-                                        {/* Mobile ONLY: Show Current Price below ticker */}
-                                        <span className={`sm:hidden font-mono font-black text-sm mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
-                                            ${u.currentPrice.toLocaleString()}
-                                        </span>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                            {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                        </div>
                                     </div>
 
-                                    {/* Desktop: Current Price in its own column */}
-                                    <span className={`hidden sm:block font-mono font-black text-right text-sm ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                    <span className={`font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
-                                    {/* Mobile: Spacer for Current Price column (hidden) */}
-                                    <span className="sm:hidden"></span>
-
-                                    {/* Prices: Smaller font on mobile to prevent overlapping */}
-                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] sm:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-[10px] sm:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] sm:text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-xs sm:text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-500 text-right text-xs sm:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-xs sm:text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
                                 );
                               })}
