@@ -3,11 +3,11 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Update v9.2:
- * 1. Visual Enhancement: Significantly boosted visibility for "Knock-Out" (KO) status.
- * - Product Row: Applies a light red background and left border when KO is achieved.
- * - Status Badge: Now uses a solid dark red background with white text for maximum contrast.
- * - Individual Assets: Underlyings that touched KO get a distinct background/border style.
+ * Update v9.3:
+ * 1. Layout Engine Change: Switched Underlying Assets table from Grid to Flexbox.
+ * - This guarantees no wrapping issues on any screen size.
+ * - Uses fixed widths for price columns and flex-grow for Ticker.
+ * 2. Visuals: Enhanced alignment and spacing for better readability on mobile.
  */
 
 // --- 1. Constants ---
@@ -652,7 +652,6 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
   );
 };
 
-// ... ShareLinkModal, ExportModal, ClientManagerModal ... (Unchanged logic, kept for context)
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
@@ -709,7 +708,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   );
 };
 
-const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink, isGeneratingShareLink }) => { 
+const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink, isGeneratingShareLink }) => { // Accept isGeneratingShareLink
   const [newName, setNewName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   // Track which client is being generated for locally to show spinner only on that button if needed.
@@ -1221,13 +1220,13 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼/進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // FIXED: Export CLEAN "Ticker EntryPrice" for re-import compatibility
-      // Removed CurrentPrice/Perf to avoid parser confusion
+      // FIXED: Only export "Ticker EntryPrice" for re-import compatibility
+      // Removed current price/perf to prevent parsing errors on import
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
       ).join(' / ');
@@ -1427,7 +1426,7 @@ const App = () => {
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
                                     <div className="text-center w-full border-b border-slate-100 pb-2"> 
-                                        <span className="text-xs text-slate-600 font-bold tracking-widest block mb-1">本金</span> 
+                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span> 
                                         <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
@@ -1443,20 +1442,22 @@ const App = () => {
                           </td>
 
                           <td className="px-4 py-2 align-middle"> 
-                            <div className="flex flex-col gap-1"> 
-                              {/* Table Header */}
-                              <div className="grid grid-cols-5 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
-                                  <span className="col-span-2 text-left">標的</span>
-                                  <span className="text-right hidden sm:block">現價</span>
-                                  <span className="text-right text-red-600">KO</span>
-                                  <span className="text-right text-slate-500">履約</span>
-                                  <span className="text-right text-green-600">KI</span>
+                            <div className="flex flex-col gap-1 w-full"> 
+                              {/* Header Row (Flexbox) */}
+                              <div className="flex w-full text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 gap-2">
+                                  <span className="flex-1 text-left">標的</span>
+                                  <span className="w-14 text-right hidden sm:block">現價</span> {/* Hide on mobile */}
+                                  <span className="w-12 text-right text-red-600">KO</span>
+                                  <span className="w-12 text-right text-slate-500">履約</span>
+                                  <span className="w-12 text-right text-green-600">KI</span>
                               </div>
-                              {/* Table Rows */}
+
+                              {/* Data Rows (Flexbox) */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : ''}`}>
-                                    <div className="col-span-2 flex flex-col justify-center min-w-0">
+                                  <div key={u.ticker} className={`flex w-full items-center border-b border-slate-50 last:border-0 pb-1 px-1 gap-2 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : ''}`}>
+                                    {/* Ticker + Mobile Price Stack */}
+                                    <div className="flex-1 flex flex-col justify-center min-w-0">
                                         <div className="flex items-center gap-1">
                                             {!isGuestMode && (
                                                 <button 
@@ -1468,21 +1469,22 @@ const App = () => {
                                             )}
                                             <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
                                         </div>
-                                        {/* Mobile: Stacked Layout to save horizontal space */}
-                                        <span className={`sm:hidden font-mono font-black text-xs ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                        {/* Mobile Price: Show under ticker */}
+                                        <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             ${u.currentPrice.toLocaleString()}
                                         </span>
                                         {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    {/* Desktop: Price in its own column */}
-                                    <span className={`hidden sm:block font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                    {/* Desktop Price */}
+                                    <span className={`hidden sm:block w-14 font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
 
-                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] sm:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-[10px] sm:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] sm:text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    {/* Barriers - Fixed Widths */}
+                                    <span className="w-12 font-mono font-bold text-red-700 text-right text-[10px] sm:text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="w-12 font-mono text-slate-500 text-right text-[10px] sm:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="w-12 font-mono font-bold text-green-700 text-right text-[10px] sm:text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
                                 );
                               })}
