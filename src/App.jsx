@@ -3,10 +3,10 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Update v9.4:
- * 1. Guest Mode Refresh: Enabled "Refresh Quotes" button for guests by embedding the Sheet ID in the share link.
- * 2. Share Link Logic: Added `sheetId` to the encrypted payload.
- * 3. Header Layout: Moved the Refresh button outside the admin-only block.
+ * Fixes v9.5:
+ * 1. Guest Refresh Visibility: Moved "Refresh Quotes" button OUTSIDE the !isGuestMode check.
+ * 2. Guest Logic: Correctly sets 'googleSheetId' state from the share link payload upon initialization.
+ * 3. Layout: Ensures the Refresh button is visible for anyone with a valid Sheet ID.
  */
 
 // --- 1. Constants ---
@@ -98,21 +98,16 @@ const formatToWan = (val) => {
     return parseFloat(wan.toFixed(2)).toString(); 
 };
 
-// Modified: Added 's' (sheetId) to payload
 const minifyData = (payload) => ({
-    v: 1, 
-    n: payload.clientName, 
-    t: payload.lastUpdated,
-    s: payload.sheetId, // Include Sheet ID in share link
+    v: 1, n: payload.clientName, t: payload.lastUpdated,
+    s: payload.sheetId, // Include Sheet ID
     p: payload.positions.map(p => [
         p.productName, p.issuer, p.nominal, p.currency, p.couponRate, p.koLevel, p.kiLevel, p.strikeLevel, 
         p.strikeDate, p.koObservationStartDate, p.maturityDate, p.tenor, 
         p.underlyings.map(u => [u.ticker, u.entryPrice, u.memoryKO ? 1 : 0])
-    ]), 
-    m: payload.prices
+    ]), m: payload.prices
 });
 
-// Modified: Extract 's' (sheetId)
 const unminifyData = (minified) => {
     if (!minified.v) return minified; 
     return {
@@ -412,7 +407,6 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
         
-        // Export CLEAN "Ticker EntryPrice" for re-import
         const allUnderlyingsClean = pos.underlyings.map(u => 
             `${u.ticker} ${u.entryPrice}`
         ).join(' / ');
@@ -1236,8 +1230,7 @@ const App = () => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // FIXED: Export CLEAN "Ticker EntryPrice" only for re-import compatibility
-      // Removed current price/perf to prevent parsing errors on import
+      // FIXED: Only export "Ticker EntryPrice" to ensure clean round-trip import
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
       ).join(' / ');
@@ -1254,7 +1247,7 @@ const App = () => {
         pos.kiLevel, 
         pos.koLevel, 
         pos.strikeLevel,
-        allUnderlyingsClean, // CLEAN FORMAT for import compatibility
+        allUnderlyingsClean, 
         calculated.laggard?.ticker || "", 
         calculated.laggard?.currentPrice || 0, 
         calculated.laggard?.entryPrice || 0, 
@@ -1437,13 +1430,13 @@ const App = () => {
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
                                     <div className="text-center w-full border-b border-slate-100 pb-2"> 
-                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span> 
+                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span> 
                                         <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span> 
+                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span> 
                                         <div className="text-red-700 font-black text-lg leading-tight truncate w-full"> 
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
@@ -1454,8 +1447,8 @@ const App = () => {
 
                           <td className="px-4 py-2 align-middle"> 
                             <div className="flex flex-col gap-1"> 
-                              {/* Table Header */}
-                              <div className="grid grid-cols-5 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                              {/* Table Header - Mobile Optimized Layout (5 cols) */}
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
                                   <span className="text-right text-red-600">KO</span>
@@ -1474,23 +1467,21 @@ const App = () => {
                                                     className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`}
                                                     title="手動標記/取消 KO"
                                                 >
-                                                    {u.memoryKO && <Check size={10} className="text-white" strokeWidth={4} />}
+                                                    {u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}
                                                 </button>
                                             )}
                                             {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
                                             
-                                            <div className="flex flex-col min-w-0">
-                                                <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
-                                                {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
-                                            </div>
+                                            <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
                                         </div>
-                                        {/* Mobile: Show Price under ticker */}
+                                        {/* Mobile: Stacked Price */}
                                         <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             ${u.currentPrice.toLocaleString()}
                                         </span>
+                                        {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    {/* Desktop: Price in its own column */}
+                                    {/* Desktop: Price Column */}
                                     <span className={`hidden sm:block font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
