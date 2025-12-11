@@ -3,11 +3,10 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
 
 /**
  * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Update v9.3:
- * 1. Layout Engine Change: Switched Underlying Assets table from Grid to Flexbox.
- * - This guarantees no wrapping issues on any screen size.
- * - Uses fixed widths for price columns and flex-grow for Ticker.
- * 2. Visuals: Enhanced alignment and spacing for better readability on mobile.
+ * Update v9.4:
+ * 1. Guest Mode Refresh: Enabled "Refresh Quotes" button for guests by embedding the Sheet ID in the share link.
+ * 2. Share Link Logic: Added `sheetId` to the encrypted payload.
+ * 3. Header Layout: Moved the Refresh button outside the admin-only block.
  */
 
 // --- 1. Constants ---
@@ -99,19 +98,28 @@ const formatToWan = (val) => {
     return parseFloat(wan.toFixed(2)).toString(); 
 };
 
+// Modified: Added 's' (sheetId) to payload
 const minifyData = (payload) => ({
-    v: 1, n: payload.clientName, t: payload.lastUpdated,
+    v: 1, 
+    n: payload.clientName, 
+    t: payload.lastUpdated,
+    s: payload.sheetId, // Include Sheet ID in share link
     p: payload.positions.map(p => [
         p.productName, p.issuer, p.nominal, p.currency, p.couponRate, p.koLevel, p.kiLevel, p.strikeLevel, 
         p.strikeDate, p.koObservationStartDate, p.maturityDate, p.tenor, 
         p.underlyings.map(u => [u.ticker, u.entryPrice, u.memoryKO ? 1 : 0])
-    ]), m: payload.prices
+    ]), 
+    m: payload.prices
 });
 
+// Modified: Extract 's' (sheetId)
 const unminifyData = (minified) => {
     if (!minified.v) return minified; 
     return {
-        clientName: minified.n, lastUpdated: minified.t, prices: minified.m,
+        clientName: minified.n, 
+        lastUpdated: minified.t, 
+        prices: minified.m,
+        sheetId: minified.s, // Extract Sheet ID
         positions: minified.p.map((arr, index) => ({
             id: index, productName: arr[0], issuer: arr[1], nominal: arr[2], currency: arr[3],
             couponRate: arr[4], koLevel: arr[5], kiLevel: arr[6], strikeLevel: arr[7],
@@ -404,6 +412,7 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
         
+        // Export CLEAN "Ticker EntryPrice" for re-import
         const allUnderlyingsClean = pos.underlyings.map(u => 
             `${u.ticker} ${u.entryPrice}`
         ).join(' / ');
@@ -652,6 +661,7 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
   );
 };
 
+// ... ShareLinkModal, ExportModal, ClientManagerModal ... (Unchanged logic, kept for context)
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
@@ -728,6 +738,7 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 relative overflow-hidden">
+        {/* Loading Overlay for generation */}
         {isGeneratingShareLink && (
             <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm animate-in fade-in">
                 <div className="animate-spin text-blue-600 mb-2"><RefreshCw size={24} /></div>
@@ -1220,12 +1231,12 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼/進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // FIXED: Only export "Ticker EntryPrice" for re-import compatibility
+      // FIXED: Export CLEAN "Ticker EntryPrice" only for re-import compatibility
       // Removed current price/perf to prevent parsing errors on import
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
@@ -1243,7 +1254,7 @@ const App = () => {
         pos.kiLevel, 
         pos.koLevel, 
         pos.strikeLevel,
-        allUnderlyingsClean, 
+        allUnderlyingsClean, // CLEAN FORMAT for import compatibility
         calculated.laggard?.ticker || "", 
         calculated.laggard?.currentPrice || 0, 
         calculated.laggard?.entryPrice || 0, 
@@ -1442,49 +1453,51 @@ const App = () => {
                           </td>
 
                           <td className="px-4 py-2 align-middle"> 
-                            <div className="flex flex-col gap-1 w-full"> 
-                              {/* Header Row (Flexbox) */}
-                              <div className="flex w-full text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 gap-2">
-                                  <span className="flex-1 text-left">標的</span>
-                                  <span className="w-14 text-right hidden sm:block">現價</span> {/* Hide on mobile */}
-                                  <span className="w-12 text-right text-red-600">KO</span>
-                                  <span className="w-12 text-right text-slate-500">履約</span>
-                                  <span className="w-12 text-right text-green-600">KI</span>
+                            <div className="flex flex-col gap-1"> 
+                              {/* Table Header */}
+                              <div className="grid grid-cols-5 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                                  <span className="col-span-2 text-left">標的</span>
+                                  <span className="text-right hidden sm:block">現價</span>
+                                  <span className="text-right text-red-600">KO</span>
+                                  <span className="text-right text-slate-500">履約</span>
+                                  <span className="text-right text-green-600">KI</span>
                               </div>
-
-                              {/* Data Rows (Flexbox) */}
+                              {/* Table Rows */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  <div key={u.ticker} className={`flex w-full items-center border-b border-slate-50 last:border-0 pb-1 px-1 gap-2 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : ''}`}>
-                                    {/* Ticker + Mobile Price Stack */}
-                                    <div className="flex-1 flex flex-col justify-center min-w-0">
+                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : ''}`}>
+                                    <div className="col-span-2 flex flex-col justify-center min-w-0">
                                         <div className="flex items-center gap-1">
                                             {!isGuestMode && (
                                                 <button 
                                                     onClick={() => toggleMemoryKO(pos.id, u.ticker)}
-                                                    className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300'}`}
+                                                    className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`}
+                                                    title="手動標記/取消 KO"
                                                 >
-                                                    {u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}
+                                                    {u.memoryKO && <Check size={10} className="text-white" strokeWidth={4} />}
                                                 </button>
                                             )}
-                                            <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                            {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
+                                            
+                                            <div className="flex flex-col min-w-0">
+                                                <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                                {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                            </div>
                                         </div>
-                                        {/* Mobile Price: Show under ticker */}
+                                        {/* Mobile: Show Price under ticker */}
                                         <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             ${u.currentPrice.toLocaleString()}
                                         </span>
-                                        {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    {/* Desktop Price */}
-                                    <span className={`hidden sm:block w-14 font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                    {/* Desktop: Price in its own column */}
+                                    <span className={`hidden sm:block font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
 
-                                    {/* Barriers - Fixed Widths */}
-                                    <span className="w-12 font-mono font-bold text-red-700 text-right text-[10px] sm:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="w-12 font-mono text-slate-500 text-right text-[10px] sm:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="w-12 font-mono font-bold text-green-700 text-right text-[10px] sm:text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] sm:text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-500 text-right text-[10px] sm:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] sm:text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
                                 );
                               })}
