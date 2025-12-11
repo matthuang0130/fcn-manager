@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Fixes v9.5:
- * 1. Guest Refresh Visibility: Moved "Refresh Quotes" button OUTSIDE the !isGuestMode check.
- * 2. Guest Logic: Correctly sets 'googleSheetId' state from the share link payload upon initialization.
- * 3. Layout: Ensures the Refresh button is visible for anyone with a valid Sheet ID.
+ * FCN 投資組合管理系統 (Final Production Version - Fixed)
+ * Fixes v9.6:
+ * 1. CRITICAL FIX: 'handleGenerateShareLink' now correctly includes 'googleSheetId' in the payload.
+ * 2. CRITICAL FIX: App initialization (useEffect) now correctly extracts and sets 'googleSheetId' from the share link.
+ * This ensures the "Refresh Quotes" button appears for guests.
  */
 
 // --- 1. Constants ---
@@ -98,14 +98,18 @@ const formatToWan = (val) => {
     return parseFloat(wan.toFixed(2)).toString(); 
 };
 
+// Modified: 's' property is critical for guest refresh
 const minifyData = (payload) => ({
-    v: 1, n: payload.clientName, t: payload.lastUpdated,
-    s: payload.sheetId, // Include Sheet ID
+    v: 1, 
+    n: payload.clientName, 
+    t: payload.lastUpdated,
+    s: payload.sheetId, // This MUST be present
     p: payload.positions.map(p => [
         p.productName, p.issuer, p.nominal, p.currency, p.couponRate, p.koLevel, p.kiLevel, p.strikeLevel, 
         p.strikeDate, p.koObservationStartDate, p.maturityDate, p.tenor, 
         p.underlyings.map(u => [u.ticker, u.entryPrice, u.memoryKO ? 1 : 0])
-    ]), m: payload.prices
+    ]), 
+    m: payload.prices
 });
 
 const unminifyData = (minified) => {
@@ -114,7 +118,7 @@ const unminifyData = (minified) => {
         clientName: minified.n, 
         lastUpdated: minified.t, 
         prices: minified.m,
-        sheetId: minified.s, // Extract Sheet ID
+        sheetId: minified.s, // Extracted here
         positions: minified.p.map((arr, index) => ({
             id: index, productName: arr[0], issuer: arr[1], nominal: arr[2], currency: arr[3],
             couponRate: arr[4], koLevel: arr[5], kiLevel: arr[6], strikeLevel: arr[7],
@@ -1002,6 +1006,7 @@ const App = () => {
               const decodedRaw = JSON.parse(base64UrlDecode(shareCode));
               const decoded = unminifyData(decodedRaw);
               setGuestData(decoded); setIsGuestMode(true);
+              if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); // Fix Guest Mode Refresh
               if (decoded.prices) setMarketPrices(decoded.prices);
               if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
               setViewMode('dashboard');
@@ -1202,7 +1207,8 @@ const App = () => {
           const clientPositions = allPositions.filter(p => p.clientId === clientId);
           const relevantPrices = {};
           clientPositions.forEach(p => { p.underlyings.forEach(u => { const price = getPriceForTicker(u.ticker); if (price !== undefined) relevantPrices[u.ticker] = price; }); });
-          const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated };
+          // Ensure googleSheetId is included in payload
+          const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated, sheetId: googleSheetId };
           const minified = minifyData(payload);
           const jsonString = JSON.stringify(minified);
           const encoded = base64UrlEncode(jsonString);
@@ -1225,12 +1231,12 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼/進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // FIXED: Only export "Ticker EntryPrice" to ensure clean round-trip import
+      // Fixed export format: "NVDA 550 / AMD 140"
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
       ).join(' / ');
@@ -1292,20 +1298,24 @@ const App = () => {
               )}
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
+               {/* Export Button */}
                <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
+               
+               {/* Moved Refresh Button Outside !isGuestMode check so guests can see it if they have sheetId */}
+               {(googleSheetId || (guestData && guestData.sheetId)) && (
+                    <button onClick={handleSyncGoogleSheet} className="flex-none flex items-center justify-center gap-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap">
+                        <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
+                        <span className="hidden sm:inline">快刷報價</span>
+                        <span className="sm:hidden">報價</span>
+                    </button>
+               )}
+
                {!isGuestMode && (
                    <>
                     <button onClick={() => checkAuth(() => setIsDataSyncModalOpen(true))} className="flex-none flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 text-white border border-purple-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap shadow-md">
                         <ArrowRightLeft size={16} />
                         <span>資料同步</span>
                     </button>
-                    {googleSheetId && (
-                        <button onClick={handleSyncGoogleSheet} className="flex-none flex items-center justify-center gap-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap">
-                            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
-                            <span className="hidden sm:inline">快刷報價</span>
-                            <span className="sm:hidden">報價</span>
-                        </button>
-                    )}
                     <button onClick={handleOpenAddModal} className="flex-none flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-md whitespace-nowrap"><Plus size={16} /><span className="hidden sm:inline">新增</span><span className="sm:hidden">新增</span></button>
                    </>
                )}
