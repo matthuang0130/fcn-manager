@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Production Version - Fixed)
- * Fixes v9.6:
- * 1. CRITICAL FIX: 'handleGenerateShareLink' now correctly includes 'googleSheetId' in the payload.
- * 2. CRITICAL FIX: App initialization (useEffect) now correctly extracts and sets 'googleSheetId' from the share link.
- * This ensures the "Refresh Quotes" button appears for guests.
+ * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
+ * Fixes v9.7:
+ * 1. Date Import Fix: Added 'normalizeDate' helper to handle various date formats (e.g. "2024/1/1", "2024.01.01").
+ * It converts them to strict "YYYY-MM-DD" required by HTML5 date inputs, preventing blank dates on import.
+ * 2. All previous features preserved.
  */
 
 // --- 1. Constants ---
@@ -98,18 +98,14 @@ const formatToWan = (val) => {
     return parseFloat(wan.toFixed(2)).toString(); 
 };
 
-// Modified: 's' property is critical for guest refresh
 const minifyData = (payload) => ({
-    v: 1, 
-    n: payload.clientName, 
-    t: payload.lastUpdated,
-    s: payload.sheetId, // This MUST be present
+    v: 1, n: payload.clientName, t: payload.lastUpdated,
+    s: payload.sheetId,
     p: payload.positions.map(p => [
         p.productName, p.issuer, p.nominal, p.currency, p.couponRate, p.koLevel, p.kiLevel, p.strikeLevel, 
         p.strikeDate, p.koObservationStartDate, p.maturityDate, p.tenor, 
         p.underlyings.map(u => [u.ticker, u.entryPrice, u.memoryKO ? 1 : 0])
-    ]), 
-    m: payload.prices
+    ]), m: payload.prices
 });
 
 const unminifyData = (minified) => {
@@ -118,7 +114,7 @@ const unminifyData = (minified) => {
         clientName: minified.n, 
         lastUpdated: minified.t, 
         prices: minified.m,
-        sheetId: minified.s, // Extracted here
+        sheetId: minified.s, 
         positions: minified.p.map((arr, index) => ({
             id: index, productName: arr[0], issuer: arr[1], nominal: arr[2], currency: arr[3],
             couponRate: arr[4], koLevel: arr[5], kiLevel: arr[6], strikeLevel: arr[7],
@@ -243,6 +239,25 @@ const parsePortfolioRows = (rows) => {
         return num < 5 ? num * 100 : num; 
     };
 
+    // FIXED: Date Normalizer to handle 2024/1/1, 2024.01.01 etc.
+    const normalizeDate = (val) => {
+        if (!val) return "";
+        const str = val.toString().trim();
+        // Replace / and . with -
+        const dashed = str.replace(/[\/\.]/g, '-');
+        const parts = dashed.split('-');
+        if (parts.length === 3) {
+            // Assume YYYY-M-D or YYYY-MM-DD
+            if (parts[0].length === 4) {
+                const y = parts[0];
+                const m = parts[1].padStart(2, '0');
+                const d = parts[2].padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+        }
+        return dashed; // Return as is if already correct or unrecognizable
+    };
+
     for (let i = headerIdx + 1; i < rows.length; i++) {
         const row = rows[i];
         if (row.length < 3 || !row[idx.product]) continue;
@@ -290,13 +305,15 @@ const parsePortfolioRows = (rows) => {
             currency: idx.currency > -1 ? row[idx.currency].toUpperCase() : "USD",
             nominal: idx.nominal > -1 ? (parseFloat(row[idx.nominal].replace(/,/g, '')) || 0) : 0,
             couponRate: idx.coupon > -1 ? (parseFloat(row[idx.coupon].replace(/[%]/g, '')) || 0) : 0,
-            maturityDate: idx.maturity > -1 ? row[idx.maturity] : "",
+            // Apply Date Normalizer
+            maturityDate: idx.maturity > -1 ? normalizeDate(row[idx.maturity]) : "",
             kiLevel: idx.ki > -1 ? parsePercent(row[idx.ki], 60) : 60,
             koLevel: idx.ko > -1 ? parsePercent(row[idx.ko], 100) : 100,
             strikeLevel: idx.strike > -1 ? parsePercent(row[idx.strike], 100) : 100,
             underlyings,
             strikeDate: "",
-            koObservationStartDate: idx.koObservation > -1 ? row[idx.koObservation] : "",
+            // Apply Date Normalizer
+            koObservationStartDate: idx.koObservation > -1 ? normalizeDate(row[idx.koObservation]) : "",
             tenor: "",
             status: "Active"
         };
@@ -736,7 +753,6 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 relative overflow-hidden">
-        {/* Loading Overlay for generation */}
         {isGeneratingShareLink && (
             <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm animate-in fade-in">
                 <div className="animate-spin text-blue-600 mb-2"><RefreshCw size={24} /></div>
@@ -1231,12 +1247,13 @@ const App = () => {
   const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼/進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // Fixed export format: "NVDA 550 / AMD 140"
+      // FIXED: Export CLEAN "Ticker EntryPrice" only for re-import compatibility
+      // Removed CurrentPrice/Perf to avoid parser confusion
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
       ).join(' / ');
@@ -1253,7 +1270,7 @@ const App = () => {
         pos.kiLevel, 
         pos.koLevel, 
         pos.strikeLevel,
-        allUnderlyingsClean, 
+        allUnderlyingsClean, // CLEAN FORMAT for import compatibility
         calculated.laggard?.ticker || "", 
         calculated.laggard?.currentPrice || 0, 
         calculated.laggard?.entryPrice || 0, 
@@ -1440,13 +1457,13 @@ const App = () => {
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
                                     <div className="text-center w-full border-b border-slate-100 pb-2"> 
-                                        <span className="text-sm text-slate-600 font-bold tracking-widest block mb-1">本金</span> 
+                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span> 
                                         <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
                                            {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
                                     <div className="text-center w-full pt-1">
-                                        <span className="text-sm text-red-600 font-bold tracking-widest block mb-1">月息</span> 
+                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span> 
                                         <div className="text-red-700 font-black text-lg leading-tight truncate w-full"> 
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
