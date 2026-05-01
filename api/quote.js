@@ -1,34 +1,37 @@
-import yahooFinance from 'yahoo-finance2';
+import { YahooFinance } from 'yahoo-finance2';
+
+// 建立實例 (v3 必須這樣寫)
+const yahooFinance = new YahooFinance();
 
 export default async function handler(req, res) {
-  // 強制設定回傳格式為 JSON，避免出現 SyntaxError
+  // 設定回傳格式，確保前端不會解析失敗
   res.setHeader('Content-Type', 'application/json');
   
   const { ticker } = req.query;
 
   if (!ticker) {
-    return res.status(400).json({ error: '缺少代號' });
+    return res.status(400).json({ error: 'Missing ticker' });
   }
 
   try {
-    // 智慧代號處理：日股加 .T，其餘不變
+    // 智慧判斷日股與美股
     const isNumeric = /^\d+$/.test(ticker);
     const symbol = isNumeric ? `${ticker}.T` : ticker;
 
-    // 呼叫 Yahoo Finance，並設定 10 秒超時，避免 API 沒反應導致 500
-    const result = await yahooFinance.quote(symbol, {}, { validateResult: false });
+    // 呼叫報價
+    const result = await yahooFinance.quote(symbol);
 
     if (!result || !result.regularMarketPrice) {
-      return res.status(404).json({ error: '找不到報價' });
+      return res.status(404).json({ error: 'Price not found' });
     }
 
     return res.status(200).json({ price: result.regularMarketPrice });
 
   } catch (error) {
-    console.error('API Error:', error.message);
+    console.error('Yahoo API Error:', error.message);
     return res.status(500).json({ 
-      error: '伺服器執行錯誤', 
-      details: error.message 
+      error: 'API Error', 
+      message: error.message 
     });
   }
 }
