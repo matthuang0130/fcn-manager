@@ -1,7 +1,9 @@
-import yahooFinance from 'yahoo-finance2';
+import * as yf from 'yahoo-finance2';
+
+// 針對 v3 版本最穩健的實例化方式
+const yahooFinance = new yf.YahooFinance();
 
 export default async function handler(req, res) {
-  // 強制設定回傳格式為 JSON
   res.setHeader('Content-Type', 'application/json');
   
   const { ticker } = req.query;
@@ -11,11 +13,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 智慧判斷日股 (.T) 與美股
     const isNumeric = /^\d+$/.test(ticker);
     const symbol = isNumeric ? `${ticker}.T` : ticker;
 
-    // 直接使用預設導出的 yahooFinance 物件
     const result = await yahooFinance.quote(symbol);
 
     if (!result || !result.regularMarketPrice) {
@@ -26,7 +26,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Yahoo API Error:', error.message);
-    // 即使失敗也回傳 JSON，避免前端噴出 SyntaxError
     return res.status(500).json({ 
       error: 'API Error', 
       message: error.message 
