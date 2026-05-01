@@ -305,14 +305,12 @@ const parsePortfolioRows = (rows) => {
             currency: idx.currency > -1 ? row[idx.currency].toUpperCase() : "USD",
             nominal: idx.nominal > -1 ? (parseFloat(row[idx.nominal].replace(/,/g, '')) || 0) : 0,
             couponRate: idx.coupon > -1 ? (parseFloat(row[idx.coupon].replace(/[%]/g, '')) || 0) : 0,
-            // Apply Date Normalizer
             maturityDate: idx.maturity > -1 ? normalizeDate(row[idx.maturity]) : "",
             kiLevel: idx.ki > -1 ? parsePercent(row[idx.ki], 60) : 60,
             koLevel: idx.ko > -1 ? parsePercent(row[idx.ko], 100) : 100,
             strikeLevel: idx.strike > -1 ? parsePercent(row[idx.strike], 100) : 100,
             underlyings,
             strikeDate: "",
-            // Apply Date Normalizer
             koObservationStartDate: idx.koObservation > -1 ? normalizeDate(row[idx.koObservation]) : "",
             tenor: "",
             status: "Active"
@@ -676,14 +674,10 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
   );
 };
 
-// ... ShareLinkModal, ExportModal, ClientManagerModal ... (Unchanged logic, kept for context)
 const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const [copyStatus, setCopyStatus] = useState("複製連結");
   const inputRef = useRef(null);
-  const [isGenerating, setIsGenerating] = useState(false); // Add local loading state for visual feedback
-
-  // Trigger shortening when modal opens if needed, or assume parent handles it.
-  // Current implementation handles it in App component before opening modal.
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleCopy = (text) => {
       const success = copyToClipboard(link);
@@ -733,12 +727,9 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   );
 };
 
-const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink, isGeneratingShareLink }) => { // Accept isGeneratingShareLink
+const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeId, onGenerateShareLink, isGeneratingShareLink }) => { 
   const [newName, setNewName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
-  // Track which client is being generated for locally to show spinner only on that button if needed.
-  // For simplicity, we can show a global overlay or just disable buttons.
-  // Let's just disable buttons when generating.
 
   const handleConfirmAdd = (e) => {
     e.preventDefault();
@@ -1185,6 +1176,37 @@ const App = () => {
     }
   };
 
+  // --- 新增：串接 Vercel 後端 API，抓取即時報價的函數 ---
+  const handleSyncLivePrices = async () => {
+    setIsLoading(true);
+    const updatedPrices = { ...marketPrices };
+    let successCount = 0;
+
+    for (const ticker of activeTickers) {
+        try {
+            const cleanTicker = ticker.toString().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
+            const response = await fetch(`/api/quote?ticker=${cleanTicker}`);
+            const data = await response.json();
+
+            if (data.price) {
+                updatedPrices[ticker] = data.price; 
+                successCount++;
+            }
+        } catch (error) {
+            console.error(`抓取 ${ticker} 失敗`, error);
+        }
+    }
+
+    if (successCount > 0) {
+        setMarketPrices(updatedPrices);
+        setLastUpdated(new Date().toLocaleString() + " (即時 API)");
+        alert(`✅ 即時報價更新完成！(成功更新 ${successCount} 檔標的)`);
+    } else {
+        alert("❌ 無法抓取報價，請確認網路連線或 API 設定。");
+    }
+    setIsLoading(false);
+  };
+
   const handleSyncPortfolio = (newClients, newPositions) => {
       setClients(newClients);
       setAllPositions(newPositions);
@@ -1326,6 +1348,13 @@ const App = () => {
                         <span className="sm:hidden">報價</span>
                     </button>
                )}
+
+               {/* --- 新增：呼叫 Vercel API 的按鈕 --- */}
+               <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ml-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                   <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
+                   <span className="hidden sm:inline">更新即時報價</span>
+                   <span className="sm:hidden">更新報價</span>
+               </button>
 
                {!isGuestMode && (
                    <>
