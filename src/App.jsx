@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
 /**
- * FCN 投資組合管理系統 (Final Production Version - Traditional Chinese)
- * Fixes v9.7:
- * 1. Date Import Fix: Added 'normalizeDate' helper to handle various date formats (e.g. "2024/1/1", "2024.01.01").
- * It converts them to strict "YYYY-MM-DD" required by HTML5 date inputs, preventing blank dates on import.
- * 2. All previous features preserved.
+ * FCN 投資組合管理系統 (Cloud Database Version)
+ * Fixes:
+ * 1. Replaced all localStorage logic with Vercel KV via /api/storage
+ * 2. Added isInitializing state for cloud data fetching
+ * 3. Added debounced auto-save to cloud
  */
 
 // --- 1. Constants ---
@@ -31,40 +31,7 @@ const DEFAULT_FORM_STATE = {
   koObservationStartDate: "", tenor: "6 個月", maturityDate: ""
 };
 
-// --- Storage Keys ---
-const KEY_POSITIONS = 'fcn_positions_v56'; 
-const KEY_PRICES = 'fcn_market_prices_v56';
-const KEY_CLIENTS = 'fcn_clients_v56';
-const KEY_UPDATE_DATE = 'fcn_last_update_date_v56';
-const KEY_SHEET_ID = 'fcn_google_sheet_id_v56'; 
-const KEY_PORTFOLIO_URL = 'fcn_portfolio_sheet_url_v56'; 
-const KEY_PASSWORD = 'fcn_admin_password_v56'; 
-
 // --- 2. Helpers ---
-
-const safeGetStorage = (key, defaultValue) => {
-  try {
-    const saved = localStorage.getItem(key);
-    if (!saved) return defaultValue;
-    const parsed = JSON.parse(saved);
-    
-    if (key.includes('clients')) {
-        if (!Array.isArray(parsed)) return defaultValue;
-        const isCorrupted = parsed.some(c => 
-            c.name && (c.name.includes('function') || c.name.includes('var ') || c.name.length > 50 && c.name.includes('='))
-        );
-        if (isCorrupted) {
-            console.warn("Detected corrupted client data, resetting to default.");
-            return defaultValue;
-        }
-    }
-    
-    return parsed;
-  } catch (e) { 
-      console.error("Storage parse error", e);
-      return defaultValue; 
-  }
-};
 
 const toHalfWidth = (str) => str ? str.replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, ' ') : "";
 
@@ -239,15 +206,12 @@ const parsePortfolioRows = (rows) => {
         return num < 5 ? num * 100 : num; 
     };
 
-    // FIXED: Date Normalizer to handle 2024/1/1, 2024.01.01 etc.
     const normalizeDate = (val) => {
         if (!val) return "";
         const str = val.toString().trim();
-        // Replace / and . with -
         const dashed = str.replace(/[\/\.]/g, '-');
         const parts = dashed.split('-');
         if (parts.length === 3) {
-            // Assume YYYY-M-D or YYYY-MM-DD
             if (parts[0].length === 4) {
                 const y = parts[0];
                 const m = parts[1].padStart(2, '0');
@@ -255,7 +219,7 @@ const parsePortfolioRows = (rows) => {
                 return `${y}-${m}-${d}`;
             }
         }
-        return dashed; // Return as is if already correct or unrecognizable
+        return dashed;
     };
 
     for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -334,7 +298,7 @@ const LandingPage = ({ onAdminLogin, hasPassword }) => {
                         <Activity size={32} className="text-white"/>
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800">FCN 投資組合管理</h1>
-                    <p className="text-sm text-slate-500 mt-2">專業結構型商品監控系統</p>
+                    <p className="text-sm text-slate-500 mt-2">專業結構型商品監控系統 (雲端版)</p>
                 </div>
                 <form onSubmit={(e)=>{e.preventDefault(); onAdminLogin(password);}} className="space-y-4">
                     <div className="space-y-1">
@@ -379,10 +343,27 @@ const PasswordPromptModal = ({ isOpen, onConfirm, onCancel }) => {
 const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIsUnlocked }) => {
     if(!isOpen) return null;
 
-    const handleFactoryReset = () => {
-        if(confirm("確定要重置所有資料嗎？\n\n這將會清除所有投資部位、報價與設定，且無法復原。\n請確認您已備份或匯出資料。")) {
-            localStorage.clear();
-            window.location.reload();
+    const handleFactoryReset = async () => {
+        if(confirm("確定要重置所有資料嗎？\n\n這將會清空雲端資料庫的所有投資部位、報價與設定，且無法復原。\n請確認您已備份或匯出資料。")) {
+            try {
+                // 將雲端資料庫重置為預設狀態
+                await fetch('/api/storage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        clients: DEFAULT_CLIENTS,
+                        positions: INITIAL_POSITIONS,
+                        marketPrices: DEFAULT_MARKET_PRICES,
+                        lastUpdated: "尚無紀錄",
+                        googleSheetId: "",
+                        portfolioSheetUrl: "",
+                        savedPassword: ""
+                    })
+                });
+                window.location.reload();
+            } catch (err) {
+                alert("重置失敗，請檢查網路連線");
+            }
         }
     };
 
@@ -406,7 +387,7 @@ const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIs
                         onClick={handleFactoryReset} 
                         className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition"
                     >
-                        <RefreshCcw size={16}/> 重置所有資料
+                        <RefreshCcw size={16}/> 清空雲端資料並重置
                     </button>
                     <p className="text-[10px] text-slate-400 mt-2 text-center">如果介面出現亂碼或錯誤，請嘗試此操作</p>
                 </div>
@@ -503,7 +484,7 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
   const handlePasteMarket = () => {
     const lines = pasteContent.split('\n'); const newPrices = { ...marketPrices }; let count = 0;
     lines.forEach(line => { const match = line.replace(/[¥$,JPY"\s]/g, '').match(/([A-Za-z0-9.:]+)[^\d-]*([\d.,]+)/); if(match) { const t = match[1].toUpperCase().replace("TYO:","").replace("JP:","").replace(".T",""); const p = parseFloat(match[2].replace(/,/g,'')); if(!isNaN(p)) { newPrices[t] = p; count++; } } });
-    setMarketPrices(newPrices); localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices)); setLastUpdated(new Date().toLocaleDateString() + " (貼上)"); setStatus(`成功更新 ${count} 筆`); setTimeout(() => setStatus(''), 2000);
+    setMarketPrices(newPrices); setLastUpdated(new Date().toLocaleDateString() + " (貼上)"); setStatus(`成功更新 ${count} 筆`); setTimeout(() => setStatus(''), 2000);
   };
   
   const handleSaveMarketId = () => { 
@@ -873,31 +854,24 @@ const App = () => {
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestData, setGuestData] = useState(null);
 
-  const [clients, setClients] = useState(() => safeGetStorage(KEY_CLIENTS, DEFAULT_CLIENTS));
-  const [activeClientId, setActiveClientId] = useState(() => {
-    const initialClients = safeGetStorage(KEY_CLIENTS, DEFAULT_CLIENTS);
-    return (initialClients && initialClients.length > 0) ? initialClients[0].id : 'c1';
-  });
-  const [allPositions, setAllPositions] = useState(() => {
-    let data = safeGetStorage(KEY_POSITIONS, INITIAL_POSITIONS);
-    if (!Array.isArray(data)) data = INITIAL_POSITIONS;
-    if (data.length > 0 && !data[0].clientId) {
-        data = data.map(p => ({...p, clientId: 'c1'}));
-    }
-    return data;
-  });
-  const [marketPrices, setMarketPrices] = useState(() => safeGetStorage(KEY_PRICES, DEFAULT_MARKET_PRICES));
-  const [lastUpdated, setLastUpdated] = useState(() => localStorage.getItem(KEY_UPDATE_DATE) || "尚無紀錄");
-  const [googleSheetId, setGoogleSheetId] = useState(() => localStorage.getItem(KEY_SHEET_ID) || "");
-  const [portfolioSheetUrl, setPortfolioSheetUrl] = useState(() => localStorage.getItem(KEY_PORTFOLIO_URL) || "");
-  const [savedPassword, setSavedPassword] = useState(() => localStorage.getItem(KEY_PASSWORD) || "");
-  const [isUnlocked, setIsUnlocked] = useState(() => !localStorage.getItem(KEY_PASSWORD)); 
+  // --- 狀態管理 (預設空值或預設值，等待 API 抓取) ---
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  const [clients, setClients] = useState(DEFAULT_CLIENTS);
+  const [activeClientId, setActiveClientId] = useState('c1');
+  const [allPositions, setAllPositions] = useState(INITIAL_POSITIONS);
+  const [marketPrices, setMarketPrices] = useState(DEFAULT_MARKET_PRICES);
+  const [lastUpdated, setLastUpdated] = useState("尚無紀錄");
+  const [googleSheetId, setGoogleSheetId] = useState("");
+  const [portfolioSheetUrl, setPortfolioSheetUrl] = useState("");
+  const [savedPassword, setSavedPassword] = useState("");
+  const [isUnlocked, setIsUnlocked] = useState(true); 
   
   const [currentShareData, setCurrentShareData] = useState({ url: '', name: '' }); 
   const [pendingAction, setPendingAction] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingShareLink, setIsGeneratingShareLink] = useState(false);
-  const [showEmbedSheet, setShowEmbedSheet] = useState(false);
 
   // UI States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -912,6 +886,92 @@ const App = () => {
   const [editId, setEditId] = useState(null);
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
+
+  // --- 初始化：從雲端載入資料 ---
+  useEffect(() => {
+    const loadCloudData = async () => {
+      try {
+        const res = await fetch('/api/storage');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Object.keys(data).length > 0) {
+            if (data.clients && data.clients.length > 0) {
+                setClients(data.clients);
+                setActiveClientId(data.clients[0].id);
+            }
+            if (data.positions) setAllPositions(data.positions);
+            if (data.marketPrices) setMarketPrices(data.marketPrices);
+            if (data.lastUpdated) setLastUpdated(data.lastUpdated);
+            if (data.googleSheetId) setGoogleSheetId(data.googleSheetId);
+            if (data.portfolioSheetUrl) setPortfolioSheetUrl(data.portfolioSheetUrl);
+            if (data.savedPassword !== undefined) {
+                setSavedPassword(data.savedPassword);
+                setIsUnlocked(!data.savedPassword); // 若雲端有密碼，則預設鎖定
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Cloud load failed", err);
+      } finally {
+        setIsInitializing(false);
+        setIsDataLoaded(true);
+      }
+    };
+
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#share=')) {
+        const shareCode = hash.replace('#share=', '');
+        if(!shareCode) return;
+        try {
+            const decodedRaw = JSON.parse(base64UrlDecode(shareCode));
+            const decoded = unminifyData(decodedRaw);
+            setGuestData(decoded); setIsGuestMode(true);
+            if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); 
+            if (decoded.prices) setMarketPrices(decoded.prices);
+            if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
+            setViewMode('dashboard');
+            window.history.replaceState(null, '', window.location.pathname);
+        } catch (e) {
+            console.error("Hash parse error", e);
+            alert("連結無效或資料已損毀");
+        }
+        setIsInitializing(false);
+        setIsDataLoaded(false); // 訪客模式不啟動資料庫寫入機制
+    } else {
+        loadCloudData();
+    }
+  }, []);
+
+  // --- 自動背景儲存：監聽狀態變化並寫入雲端 ---
+  useEffect(() => {
+    // 確保只在「資料已經從雲端載入完成」且「非訪客模式」時才寫入，以免蓋掉雲端資料
+    if (!isDataLoaded || isGuestMode) return;
+
+    const saveCloudData = async () => {
+      const payload = {
+        clients,
+        positions: allPositions,
+        marketPrices,
+        lastUpdated,
+        googleSheetId,
+        portfolioSheetUrl,
+        savedPassword
+      };
+      try {
+        await fetch('/api/storage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        console.error('Save to cloud failed', e);
+      }
+    };
+
+    // 使用 debounce（防抖）設計，避免短時間內瘋狂觸發 API 請求
+    const timeoutId = setTimeout(saveCloudData, 500);
+    return () => clearTimeout(timeoutId);
+  }, [clients, allPositions, marketPrices, lastUpdated, googleSheetId, portfolioSheetUrl, savedPassword, isDataLoaded, isGuestMode]);
 
   // --- Helper: Fetch with Fallback ---
   const fetchWithFallback = async (targetUrl) => {
@@ -1003,27 +1063,6 @@ const App = () => {
       });
   };
 
-  useEffect(() => {
-      const hash = window.location.hash;
-      if (hash && hash.startsWith('#share=')) {
-          const shareCode = hash.replace('#share=', '');
-          if(!shareCode) return;
-          try {
-              const decodedRaw = JSON.parse(base64UrlDecode(shareCode));
-              const decoded = unminifyData(decodedRaw);
-              setGuestData(decoded); setIsGuestMode(true);
-              if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); // Fix Guest Mode Refresh
-              if (decoded.prices) setMarketPrices(decoded.prices);
-              if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
-              setViewMode('dashboard');
-              window.history.replaceState(null, '', window.location.pathname);
-          } catch (e) {
-              console.error("Hash parse error", e);
-              alert("連結無效或資料已損毀");
-          }
-      }
-  }, []);
-
   const activeClient = useMemo(() => {
     if (isGuestMode && guestData) return { id: 'guest', name: guestData.clientName || '訪客' };
     return clients.find(c => c.id === activeClientId) || { id: 'temp', name: '未知投資人' };
@@ -1040,13 +1079,6 @@ const App = () => {
     sourcePositions.forEach(p => { if(p.underlyings) p.underlyings.forEach(u => tickers.add(u.ticker)); });
     return Array.from(tickers).sort();
   }, [allPositions, currentClientPositions, isGuestMode]);
-
-  useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_CLIENTS, JSON.stringify(clients)); } catch(e){} }, [clients, isGuestMode]);
-  useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_POSITIONS, JSON.stringify(allPositions)); } catch(e){} }, [allPositions, isGuestMode]);
-  useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_PRICES, JSON.stringify(marketPrices)); } catch(e){} }, [marketPrices, isGuestMode]);
-  useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_SHEET_ID, googleSheetId); } catch(e){} }, [googleSheetId, isGuestMode]);
-  useEffect(() => { if(!isGuestMode) try { localStorage.setItem(KEY_PORTFOLIO_URL, portfolioSheetUrl); } catch(e){} }, [portfolioSheetUrl, isGuestMode]);
-  useEffect(() => { if(!isGuestMode) { if(savedPassword) localStorage.setItem(KEY_PASSWORD, savedPassword); else localStorage.removeItem(KEY_PASSWORD); } }, [savedPassword, isGuestMode]);
 
   const checkAuth = (action) => { if (isUnlocked) action(); else { setPendingAction(() => action); setIsPasswordPromptOpen(true); } };
   const handleUnlock = (inputPwd) => { if (inputPwd === savedPassword) { setIsUnlocked(true); setIsPasswordPromptOpen(false); if (pendingAction) { pendingAction(); setPendingAction(null); } } else { alert("密碼錯誤"); } };
@@ -1114,68 +1146,7 @@ const App = () => {
     };
   }, [processedPositions]);
 
-  const handleSyncGoogleSheet = async () => {
-    if(!googleSheetId) {
-        setIsDataSyncModalOpen(true);
-        return;
-    }
-    setIsLoading(true);
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${googleSheetId}/export?format=csv`;
-    try {
-      const text = await fetchWithFallback(exportUrl);
-      if(text.includes("<!DOCTYPE html") || text.includes("google.com/accounts")) {
-          if(googleSheetId.length > 20) { 
-             const rows = parseRawDataToRows(text);
-             if(rows.length > 0) {
-                 const newPrices = { ...marketPrices };
-                 let count = 0;
-                 rows.forEach(row => {
-                     if(row.length >= 2) {
-                         const t = row[0].toUpperCase().replace("TYO:","").replace("JP:","").replace(".T","");
-                         const pStr = row[1].replace(/[¥$,JPY"\s]/g, '').replace(/,/g, '');
-                         const p = parseFloat(pStr);
-                         if(t && !isNaN(p)) { newPrices[t] = p; count++; }
-                     }
-                 });
-                 if(count > 0) {
-                     setMarketPrices(newPrices);
-                     localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices));
-                     setLastUpdated(new Date().toLocaleString() + " (Web)");
-                     alert(`同步成功！從網頁更新了 ${count} 筆報價。`);
-                     return;
-                 }
-             }
-          }
-          throw new Error("權限錯誤：請確認連結設為「知道連結的人皆可檢視」");
-      }
-      const newPrices = { ...marketPrices };
-      let count = 0;
-      const lines = text.split(/\r?\n/);
-      lines.forEach(row => {
-          const matches = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-          if(matches && matches.length >= 2) {
-              let t = matches[0].replace(/^"|"$/g, '').trim().toUpperCase();
-              t = t.replace("TYO:", "").replace("JP:", "").replace(".T", "");
-              let pStr = matches[1].replace(/^"|"$/g, '').trim();
-              pStr = pStr.replace(/[¥$,JPY"\s]/g, '').replace(/,/g, '');
-              const p = parseFloat(pStr);
-              if(t && !isNaN(p)) { newPrices[t] = p; count++; }
-          }
-      });
-      if(count === 0) throw new Error("解析失敗：未找到有效股價");
-      setMarketPrices(newPrices);
-      localStorage.setItem(KEY_PRICES, JSON.stringify(newPrices));
-      setLastUpdated(new Date().toLocaleString() + " (Sheet)");
-      alert(`同步成功！更新了 ${count} 筆報價。`);
-    } catch(e) {
-      console.error(e);
-      alert(`❌ 同步失敗：${e.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // --- 新增：串接 Vercel 後端 API，抓取即時報價的函數 ---
+  // --- 抓取即時報價的函數 ---
   const handleSyncLivePrices = async () => {
     setIsLoading(true);
     const updatedPrices = { ...marketPrices };
@@ -1244,7 +1215,6 @@ const App = () => {
           const clientPositions = allPositions.filter(p => p.clientId === clientId);
           const relevantPrices = {};
           clientPositions.forEach(p => { p.underlyings.forEach(u => { const price = getPriceForTicker(u.ticker); if (price !== undefined) relevantPrices[u.ticker] = price; }); });
-          // Ensure googleSheetId is included in payload
           const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated, sheetId: googleSheetId };
           const minified = minifyData(payload);
           const jsonString = JSON.stringify(minified);
@@ -1273,8 +1243,6 @@ const App = () => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
       
-      // FIXED: Export CLEAN "Ticker EntryPrice" only for re-import compatibility
-      // Removed CurrentPrice/Perf to avoid parser confusion
       const allUnderlyingsClean = pos.underlyings.map(u => 
           `${u.ticker} ${u.entryPrice}`
       ).join(' / ');
@@ -1291,7 +1259,7 @@ const App = () => {
         pos.kiLevel, 
         pos.koLevel, 
         pos.strikeLevel,
-        allUnderlyingsClean, // CLEAN FORMAT for import compatibility
+        allUnderlyingsClean, 
         calculated.laggard?.ticker || "", 
         calculated.laggard?.currentPrice || 0, 
         calculated.laggard?.entryPrice || 0, 
@@ -1305,6 +1273,16 @@ const App = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a"); link.href = url; link.setAttribute("download", `FCN_Portfolio.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
+
+  if (isInitializing) {
+      return (
+          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+              <Loader className="animate-spin text-blue-600 mb-4" size={48} />
+              <h2 className="text-xl font-bold text-slate-800">正在連接雲端資料庫</h2>
+              <p className="text-sm text-slate-500 mt-2">請稍候...</p>
+          </div>
+      );
+  }
 
   if (viewMode === 'landing') {
       return <LandingPage onAdminLogin={handleAdminLogin} hasPassword={!!savedPassword}/>;
@@ -1339,7 +1317,6 @@ const App = () => {
                {/* Export Button */}
                <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
 
-               {/* --- 新增：呼叫 Vercel API 的按鈕 --- */}
                <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ml-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                    <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
                    <span className="hidden sm:inline">更新即時報價</span>
