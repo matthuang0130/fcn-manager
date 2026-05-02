@@ -9,6 +9,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 3. Added debounced auto-save to cloud
  * 4. Added cache-busting (?t=Date.now() & cache: 'no-store') to prevent Vercel caching old password states.
  * 5. UI Upgrade: Transformed table into responsive "Flex Cards" on mobile for zero horizontal scrolling.
+ * 6. Bug Fix: Removed stray w-full classes that caused desktop table cells to overlap.
  */
 
 // --- 1. Constants ---
@@ -1401,7 +1402,7 @@ const App = () => {
             
             <div className="w-full">
               {/* 在手機版變成 block，電腦版維持 table */}
-              <table className="w-full text-left border-collapse block md:table min-w-full">
+              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[800px]">
                 
                 {/* 電腦版表頭，手機版隱藏 */}
                 <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
@@ -1421,10 +1422,10 @@ const App = () => {
 
                       return (
                         // 手機版變成 flex-col 上下堆疊的卡片，電腦版維持 table-row
-                        <tr key={pos.id} className={`${rowClass} transition group flex flex-col md:table-row w-full`}>
+                        <tr key={pos.id} className={`${rowClass} transition group flex flex-col md:table-row`}>
                           
                           {/* ======= 區塊 1：產品資訊 ======= */}
-                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell w-full border-b md:border-0 border-slate-100"> 
+                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell border-b md:border-0 border-slate-100"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
                                <div className="text-sm font-black text-slate-800 break-all md:whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
@@ -1445,7 +1446,7 @@ const App = () => {
                           </td>
                           
                           {/* ======= 區塊 2：金額與月息 ======= */}
-                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell w-full border-b md:border-0 border-slate-100"> 
+                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell border-b md:border-0 border-slate-100"> 
                             {/* 手機版改為橫向排列，電腦版維持置中直向 */}
                             <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2">
                                 <span className="md:hidden text-xs font-bold text-slate-500">本金與月息</span>
@@ -1468,8 +1469,8 @@ const App = () => {
                           </td>
 
                           {/* ======= 區塊 3：連結標的 ======= */}
-                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell w-full border-b md:border-0 border-slate-100"> 
-                            <div className="flex flex-col gap-1 w-full"> 
+                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell border-b md:border-0 border-slate-100"> 
+                            <div className="flex flex-col gap-1 w-full md:w-auto"> 
                               <span className="md:hidden text-xs font-bold text-slate-500 mb-1">連結標的情況</span>
                               <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="col-span-2 text-left">標的</span>
@@ -1518,13 +1519,13 @@ const App = () => {
                           </td>
 
                           {/* ======= 區塊 4：操作按鈕 ======= */}
-                          <td className="px-4 py-2 md:py-2 text-right align-middle flex justify-end md:table-cell bg-slate-50/50 md:bg-transparent w-full rounded-b-xl md:rounded-none"> 
+                          <td className="px-4 py-2 md:py-2 text-right align-middle flex justify-end md:table-cell bg-slate-50/50 md:bg-transparent rounded-b-xl md:rounded-none"> 
                             {!isGuestMode && (
-                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold w-full md:w-auto" title="編輯部位">
+                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto mt-2 md:mt-0">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
                                         <Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span>
                                     </button>
-                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold w-full md:w-auto" title="刪除部位">
+                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位">
                                         <Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span>
                                     </button>
                                 </div>
