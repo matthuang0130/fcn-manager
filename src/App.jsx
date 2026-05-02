@@ -7,6 +7,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 1. Replaced all localStorage logic with Vercel KV via /api/storage
  * 2. Added isInitializing state for cloud data fetching
  * 3. Added debounced auto-save to cloud
+ * 4. Added cache-busting (?t=Date.now() & cache: 'no-store') to prevent Vercel caching old password states.
  */
 
 // --- 1. Constants ---
@@ -891,7 +892,8 @@ const App = () => {
   useEffect(() => {
     const loadCloudData = async () => {
       try {
-        const res = await fetch('/api/storage');
+        // --- ★ 新增防暫存機制 ★ ---
+        const res = await fetch(`/api/storage?t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           if (data && Object.keys(data).length > 0) {
