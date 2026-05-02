@@ -8,7 +8,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 2. Added isInitializing state for cloud data fetching
  * 3. Added debounced auto-save to cloud
  * 4. Added cache-busting (?t=Date.now() & cache: 'no-store') to prevent Vercel caching old password states.
- * 5. Added responsive design (Tailwind md: prefix) to highly compress table width on mobile screens, reducing horizontal scroll.
+ * 5. UI Upgrade: Transformed table into responsive "Flex Cards" on mobile for zero horizontal scrolling.
  */
 
 // --- 1. Constants ---
@@ -348,7 +348,6 @@ const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIs
     const handleFactoryReset = async () => {
         if(confirm("確定要重置所有資料嗎？\n\n這將會清空雲端資料庫的所有投資部位、報價與設定，且無法復原。\n請確認您已備份或匯出資料。")) {
             try {
-                // 將雲端資料庫重置為預設狀態
                 await fetch('/api/storage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -893,7 +892,6 @@ const App = () => {
   useEffect(() => {
     const loadCloudData = async () => {
       try {
-        // --- ★ 新增防暫存機制 ★ ---
         const res = await fetch(`/api/storage?t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
@@ -909,7 +907,7 @@ const App = () => {
             if (data.portfolioSheetUrl) setPortfolioSheetUrl(data.portfolioSheetUrl);
             if (data.savedPassword !== undefined) {
                 setSavedPassword(data.savedPassword);
-                setIsUnlocked(!data.savedPassword); // 若雲端有密碼，則預設鎖定
+                setIsUnlocked(!data.savedPassword);
             }
           }
         }
@@ -939,7 +937,7 @@ const App = () => {
             alert("連結無效或資料已損毀");
         }
         setIsInitializing(false);
-        setIsDataLoaded(false); // 訪客模式不啟動資料庫寫入機制
+        setIsDataLoaded(false); 
     } else {
         loadCloudData();
     }
@@ -947,7 +945,6 @@ const App = () => {
 
   // --- 自動背景儲存：監聽狀態變化並寫入雲端 ---
   useEffect(() => {
-    // 確保只在「資料已經從雲端載入完成」且「非訪客模式」時才寫入，以免蓋掉雲端資料
     if (!isDataLoaded || isGuestMode) return;
 
     const saveCloudData = async () => {
@@ -971,7 +968,6 @@ const App = () => {
       }
     };
 
-    // 使用 debounce（防抖）設計，避免短時間內瘋狂觸發 API 請求
     const timeoutId = setTimeout(saveCloudData, 500);
     return () => clearTimeout(timeoutId);
   }, [clients, allPositions, marketPrices, lastUpdated, googleSheetId, portfolioSheetUrl, savedPassword, isDataLoaded, isGuestMode]);
@@ -1019,19 +1015,15 @@ const App = () => {
       const updatedPositions = allPositions.map(pos => {
           let posUpdated = false;
           const newUnderlyings = pos.underlyings.map(u => {
-              // Get current price (either from marketPrices or fallback to entryPrice)
               const currentPrice = (() => {
                    const cleanTicker = u.ticker.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
                    if (marketPrices[u.ticker] !== undefined) return marketPrices[u.ticker];
-                   // Try finding by clean ticker if exact match fails
                    const foundKey = Object.keys(marketPrices).find(k => k.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim() === cleanTicker);
                    return foundKey ? marketPrices[foundKey] : u.entryPrice;
               })();
 
-              // Calculate KO Price
               const koPrice = u.entryPrice * (pos.koLevel / 100);
               
-              // Logic: If Price >= KO AND Today >= ObservationDate AND not already marked
               if (!u.memoryKO && currentPrice >= koPrice && pos.koObservationStartDate && today >= pos.koObservationStartDate) {
                   posUpdated = true;
                   hasUpdates = true;
@@ -1049,7 +1041,7 @@ const App = () => {
       if (hasUpdates) {
           setAllPositions(updatedPositions);
       }
-  }, [marketPrices, allPositions]); // Runs when prices update or positions load
+  }, [marketPrices, allPositions]);
 
   // Manual Toggle for Memory KO
   const toggleMemoryKO = (positionId, ticker) => {
@@ -1105,7 +1097,6 @@ const App = () => {
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
     
-    // Check if all underlyings have touched KO
     const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
 
     const underlyingDetails = (pos.underlyings || []).map(u => {
@@ -1118,12 +1109,11 @@ const App = () => {
     });
     const monthlyCoupon = Math.round((pos.nominal * (pos.couponRate / 100)) / 12);
     
-    let riskStatus = "觀察中", statusColor = "bg-blue-100 text-blue-800 border border-blue-200"; // Default style
+    let riskStatus = "觀察中", statusColor = "bg-blue-100 text-blue-800 border border-blue-200"; 
     
-    // Updated Status Logic for better visibility
     if (allTouchedKO) {
         riskStatus = "達成 KO";
-        statusColor = "bg-red-600 text-white font-bold border border-red-700 shadow-sm animate-pulse"; // High visibility
+        statusColor = "bg-red-600 text-white font-bold border border-red-700 shadow-sm animate-pulse"; 
     } else if (minPerf <= pos.kiLevel) { 
         riskStatus = "已觸及 KI"; 
         statusColor = "bg-green-100 text-green-800 font-bold border border-green-300"; 
@@ -1132,7 +1122,6 @@ const App = () => {
         statusColor = "bg-orange-100 text-orange-800 font-bold border border-orange-300"; 
     } 
     
-    // Return isProductKO flag for row styling
     return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon, isProductKO: allTouchedKO };
   };
 
@@ -1149,7 +1138,6 @@ const App = () => {
     };
   }, [processedPositions]);
 
-  // --- 抓取即時報價的函數 ---
   const handleSyncLivePrices = async () => {
     setIsLoading(true);
     const updatedPrices = { ...marketPrices };
@@ -1317,7 +1305,6 @@ const App = () => {
               )}
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
-               {/* Export Button */}
                <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
 
                <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ml-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -1340,11 +1327,9 @@ const App = () => {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column */}
         <div className="lg:col-span-9 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             
-            {/* USD Asset Card */}
             <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
                     <DollarSign size={48} className="text-slate-400"/>
@@ -1353,14 +1338,12 @@ const App = () => {
                     <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">USD 資產總覽</div>
                     <div className="flex flex-col gap-1">
                         <div className="flex items-baseline gap-1">
-                            {/* Only integers for USD Nominal (e.g., 12萬) */}
                             <span className="text-2xl font-black text-slate-800">${(summary.usd.nominal/10000).toFixed(0)}</span>
                             <span className="text-sm font-bold text-slate-600">萬</span>
                             <span className="text-[10px] text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
                         </div>
                         <div className="flex items-center gap-1 text-red-700 font-bold">
                              <Plus size={12} strokeWidth={4} />
-                             {/* Explicit integer value for monthly coupon */}
                              <span className="text-lg">${summary.usd.monthly.toLocaleString()}</span>
                              <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
                         </div>
@@ -1368,7 +1351,6 @@ const App = () => {
                 </div>
             </div>
 
-            {/* JPY Asset Card */}
             <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
                     <Coins size={48} className="text-slate-400"/>
@@ -1377,14 +1359,12 @@ const App = () => {
                     <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">JPY 資產總覽</div>
                      <div className="flex flex-col gap-1">
                         <div className="flex items-baseline gap-1">
-                            {/* Only integers for JPY Nominal (e.g., 300萬) */}
                             <span className="text-2xl font-black text-slate-800">¥{(summary.jpy.nominal/10000).toFixed(0)}</span>
                             <span className="text-sm font-bold text-slate-600">萬</span>
                             <span className="text-[10px] text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
                         </div>
                         <div className="flex items-center gap-1 text-red-700 font-bold">
                              <Plus size={12} strokeWidth={4} />
-                             {/* Explicit integer value for monthly coupon */}
                              <span className="text-lg">¥{summary.jpy.monthly.toLocaleString()}</span>
                              <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
                         </div>
@@ -1409,77 +1389,89 @@ const App = () => {
             </div>
 
           </div>
+          
+          {/* ========================================================================================= */}
+          {/* ========================== 終極響應式卡片表格區塊 (Responsive Cards) ========================== */}
+          {/* ========================================================================================= */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
               <div className="flex items-center gap-2"><Briefcase size={16} className="text-slate-400"/><h2 className="font-bold text-slate-700 text-sm">{activeClient.name} 的部位</h2></div>
               <span className="text-[10px] text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
-            {/* 調整 1：在手機版將表格最小寬度從 800px 降到 550px，並保留底部的滑動空間 */}
-            <div className="overflow-x-auto pb-2">
-              <table className="w-full text-left border-collapse min-w-[550px] md:min-w-[800px]">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  {/* 調整 2：手機版標題字體縮小 (text-xs) */}
-                  <tr className="text-xs md:text-sm text-slate-600 font-bold">
-                    <th className="px-2 md:px-4 py-3 min-w-[200px] md:min-w-[260px]">產品資訊</th>
-                    <th className="px-2 md:px-4 py-3 text-center w-24 md:w-40">本金 / 月息</th>
-                    <th className="px-2 md:px-4 py-3">連結標的情況</th>
-                    <th className="px-2 md:px-4 py-3 text-right w-16 md:w-20">操作</th>
+            <div className="w-full">
+              {/* 在手機版變成 block，電腦版維持 table */}
+              <table className="w-full text-left border-collapse block md:table min-w-full">
+                
+                {/* 電腦版表頭，手機版隱藏 */}
+                <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
+                  <tr className="text-sm text-slate-600 font-bold">
+                    <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
+                    <th className="px-4 py-3 text-center w-40">本金 / 月息</th>
+                    <th className="px-4 py-3">連結標的情況</th>
+                    <th className="px-4 py-3 text-right w-20">操作</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                
+                {/* 手機版：加上粗分隔線 (divide-y-[8px]) 讓卡片分離；電腦版維持一般細線 */}
+                <tbody className="block md:table-row-group divide-y-[8px] md:divide-y md:divide-y-[1px] divide-slate-100">
                   {processedPositions.map((pos) => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
-                      const rowClass = pos.isProductKO ? "bg-red-50 border-l-4 border-l-red-500" : "hover:bg-slate-50";
+                      const rowClass = pos.isProductKO ? "bg-red-50 md:border-l-4 md:border-l-red-500" : "hover:bg-slate-50";
 
                       return (
-                        <tr key={pos.id} className={`${rowClass} transition group`}>
-                          {/* 調整 3：所有儲存格在手機版將左右留白 (padding) 從 4 縮減成 2 */}
-                          <td className="px-2 md:px-4 py-2 align-middle"> 
+                        // 手機版變成 flex-col 上下堆疊的卡片，電腦版維持 table-row
+                        <tr key={pos.id} className={`${rowClass} transition group flex flex-col md:table-row w-full`}>
+                          
+                          {/* ======= 區塊 1：產品資訊 ======= */}
+                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell w-full border-b md:border-0 border-slate-100"> 
                             <div className="flex items-center gap-2 mb-2">
-                               <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               {/* 手機版產品名稱字體略為縮小 */}
-                               <div className="text-xs md:text-sm font-black text-slate-800 whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
+                               <span className={`text-[10px] px-1.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
+                               <div className="text-sm font-black text-slate-800 break-all md:whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
-                            <div className="flex flex-col gap-1.5">
-                                 <div className="flex flex-wrap gap-1 md:gap-2 items-center">
-                                     <span className="bg-slate-100 px-1.5 md:px-2 py-0.5 rounded text-[10px] md:text-xs text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
-                                     <span className="bg-blue-50 px-1.5 md:px-2 py-0.5 rounded text-[10px] md:text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
+                            <div className="flex flex-col md:flex-row gap-1.5 md:gap-3">
+                                 <div className="flex flex-wrap gap-2 items-center">
+                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
+                                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
                                  </div>
-                                 
-                                 <div className="flex flex-wrap gap-1 md:gap-2 mt-1 md:mt-2 text-[10px] md:text-[11px] font-bold">
-                                     <span className="px-1.5 md:px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100">KO {pos.koLevel}%</span>
-                                     <span className="px-1.5 md:px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
-                                     <span className="px-1.5 md:px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
+                                 <div className="flex flex-wrap gap-2 mt-1 md:mt-0 text-[11px] font-bold">
+                                     <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100">KO {pos.koLevel}%</span>
+                                     <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
+                                     <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
                                  </div>
                             </div>
-                            <div className="flex items-center gap-1 text-[9px] md:text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
                           </td>
                           
-                          <td className="px-2 md:px-4 py-2 align-middle"> 
-                            <div className="flex flex-col items-center justify-center h-full">
-                                {/* 調整 4：手機版的金額小卡大幅縮減 padding 與字體，寬度從 w-28 縮減至 w-20 */}
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 md:p-3 shadow-sm flex flex-col justify-center items-center gap-1 md:gap-2 w-20 md:w-28 h-auto py-2 md:py-3"> 
-                                    <div className="text-center w-full border-b border-slate-100 pb-1 md:pb-2"> 
-                                        <span className="text-[10px] md:text-xs text-slate-500 font-bold tracking-widest block mb-0.5 md:mb-1">本金</span> 
-                                        <div className="text-slate-800 font-black text-sm md:text-lg leading-tight truncate w-full">
-                                           {formatToWan(pos.nominal)}<span className="text-[10px] md:text-xs ml-0.5">萬</span>
+                          {/* ======= 區塊 2：金額與月息 ======= */}
+                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell w-full border-b md:border-0 border-slate-100"> 
+                            {/* 手機版改為橫向排列，電腦版維持置中直向 */}
+                            <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2">
+                                <span className="md:hidden text-xs font-bold text-slate-500">本金與月息</span>
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-28 h-auto py-2 md:py-3 px-4 md:px-2"> 
+                                    <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 md:pb-2 flex flex-col md:block"> 
+                                        <span className="text-[10px] text-slate-500 font-bold tracking-widest mb-0.5">本金</span> 
+                                        <div className="text-slate-800 font-black text-sm md:text-lg leading-tight truncate">
+                                           {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
-                                    <div className="text-center w-full pt-0.5 md:pt-1">
-                                        <span className="text-[10px] md:text-xs text-red-600 font-bold tracking-widest block mb-0.5 md:mb-1">月息</span> 
-                                        <div className="text-red-700 font-black text-sm md:text-lg leading-tight truncate w-full"> 
-                                           {pos.monthlyCoupon.toLocaleString()}
+                                    <div className="h-6 w-px bg-slate-200 md:hidden"></div>
+                                    <div className="text-right md:text-center flex-1 md:w-full md:pt-1 flex flex-col md:block">
+                                        <span className="text-[10px] text-red-600 font-bold tracking-widest mb-0.5">月息</span> 
+                                        <div className="text-red-700 font-black text-sm md:text-lg leading-tight truncate"> 
+                                           {pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}
                                         </div>
                                     </div>
                                 </div>
                             </div>
                           </td>
 
-                          <td className="px-2 md:px-4 py-2 align-middle"> 
-                            <div className="flex flex-col gap-1"> 
-                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 text-[9px] sm:text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                          {/* ======= 區塊 3：連結標的 ======= */}
+                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell w-full border-b md:border-0 border-slate-100"> 
+                            <div className="flex flex-col gap-1 w-full"> 
+                              <span className="md:hidden text-xs font-bold text-slate-500 mb-1">連結標的情況</span>
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
                                   <span className="text-right text-red-600">KO</span>
@@ -1488,7 +1480,7 @@ const App = () => {
                               </div>
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : ''}`}>
+                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : 'hover:bg-slate-50'}`}>
                                     <div className="col-span-2 flex flex-col justify-center min-w-0">
                                         <div className="flex items-center gap-1">
                                             {!isGuestMode && (
@@ -1502,31 +1494,39 @@ const App = () => {
                                             )}
                                             {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
                                             
-                                            <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                            <span className={`font-black text-xs md:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
                                         </div>
+                                        {/* 手機版的股價顯示在這裡 */}
                                         <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
-                                            ${u.currentPrice.toLocaleString()}
+                                            {pos.currency === 'JPY' ? '¥' : '$'}{u.currentPrice.toLocaleString()}
                                         </span>
                                         {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    <span className={`hidden sm:block font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                    {/* 電腦版的股價欄位 */}
+                                    <span className={`hidden sm:block font-mono font-black text-right text-xs md:text-sm ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
 
-                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] sm:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-[10px] sm:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] sm:text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] md:text-sm">{u.koPrice.toFixed(0)}</span>
+                                    <span className="font-mono text-slate-500 text-right text-[10px] md:text-sm">{u.strikePrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] md:text-sm">{u.kiPrice.toFixed(0)}</span>
                                   </div>
                                 );
                               })}
                             </div>
                           </td>
-                          <td className="px-2 md:px-4 py-2 text-right align-middle"> 
+
+                          {/* ======= 區塊 4：操作按鈕 ======= */}
+                          <td className="px-4 py-2 md:py-2 text-right align-middle flex justify-end md:table-cell bg-slate-50/50 md:bg-transparent w-full rounded-b-xl md:rounded-none"> 
                             {!isGuestMode && (
-                                <div className="flex flex-col items-end gap-2 h-full justify-center">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
-                                    <button onClick={() => deletePosition(pos.id)} className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="刪除部位"><Trash2 size={18} /></button>
+                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold w-full md:w-auto" title="編輯部位">
+                                        <Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span>
+                                    </button>
+                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold w-full md:w-auto" title="刪除部位">
+                                        <Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span>
+                                    </button>
                                 </div>
                             )}
                           </td>
@@ -1540,6 +1540,8 @@ const App = () => {
               </table>
             </div>
           </div>
+          {/* ========================================================================================= */}
+          
         </div>
       </main>
 
