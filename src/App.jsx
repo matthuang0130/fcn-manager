@@ -8,8 +8,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 2. Added isInitializing state for cloud data fetching
  * 3. Added debounced auto-save to cloud
  * 4. Added cache-busting (?t=Date.now() & cache: 'no-store') to prevent Vercel caching old password states.
- * 5. UI Upgrade: Transformed table into responsive "Flex Cards" on mobile for zero horizontal scrolling.
- * 6. Bug Fix: Removed stray w-full classes that caused desktop table cells to overlap.
+ * 5. UI Upgrade: Stable Responsive Cards. Mobile uses block layout for cards, Desktop uses native table.
  */
 
 // --- 1. Constants ---
@@ -664,7 +663,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const handleCopy = () => {
       const success = copyToClipboard(link);
       if(success) { setCopyStatus("已複製！"); setTimeout(() => setCopyStatus("複製連結"), 2000); }
-      else prompt("請手動複製：", link);
+      else prompt("請手 ক্যামের動複製：", link);
   };
 
   if(!isOpen) return null;
@@ -1400,9 +1399,9 @@ const App = () => {
               <span className="text-[10px] text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
-            <div className="w-full">
+            <div className="w-full p-3 md:p-0">
               {/* 在手機版變成 block，電腦版維持 table */}
-              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[800px]">
+              <table className="w-full text-left border-collapse block md:table min-w-full">
                 
                 {/* 電腦版表頭，手機版隱藏 */}
                 <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
@@ -1414,21 +1413,21 @@ const App = () => {
                   </tr>
                 </thead>
                 
-                {/* 手機版：加上粗分隔線 (divide-y-[8px]) 讓卡片分離；電腦版維持一般細線 */}
-                <tbody className="block md:table-row-group divide-y-[8px] md:divide-y md:divide-y-[1px] divide-slate-100">
+                {/* 手機版：加上卡片間距；電腦版維持一般細線 */}
+                <tbody className="block md:table-row-group md:divide-y md:divide-slate-100">
                   {processedPositions.map((pos) => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
-                      const rowClass = pos.isProductKO ? "bg-red-50 md:border-l-4 md:border-l-red-500" : "hover:bg-slate-50";
+                      const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
 
                       return (
-                        // 手機版變成 flex-col 上下堆疊的卡片，電腦版維持 table-row
-                        <tr key={pos.id} className={`${rowClass} transition group flex flex-col md:table-row`}>
+                        // 手機版變成獨立的圓角邊框卡片 (mb-4)，電腦版維持無圓角的 table-row
+                        <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
                           
                           {/* ======= 區塊 1：產品資訊 ======= */}
-                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell border-b md:border-0 border-slate-100"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               <div className="text-sm font-black text-slate-800 break-all md:whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
+                               <div className="text-sm font-black text-slate-800 break-words md:whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col md:flex-row gap-1.5 md:gap-3">
@@ -1446,9 +1445,9 @@ const App = () => {
                           </td>
                           
                           {/* ======= 區塊 2：金額與月息 ======= */}
-                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell border-b md:border-0 border-slate-100"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto bg-slate-50/50 md:bg-transparent"> 
                             {/* 手機版改為橫向排列，電腦版維持置中直向 */}
-                            <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2">
+                            <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2 w-full">
                                 <span className="md:hidden text-xs font-bold text-slate-500">本金與月息</span>
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-28 h-auto py-2 md:py-3 px-4 md:px-2"> 
                                     <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 md:pb-2 flex flex-col md:block"> 
@@ -1469,8 +1468,8 @@ const App = () => {
                           </td>
 
                           {/* ======= 區塊 3：連結標的 ======= */}
-                          <td className="px-4 py-3 md:py-2 align-middle block md:table-cell border-b md:border-0 border-slate-100"> 
-                            <div className="flex flex-col gap-1 w-full md:w-auto"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
+                            <div className="flex flex-col gap-1 w-full"> 
                               <span className="md:hidden text-xs font-bold text-slate-500 mb-1">連結標的情況</span>
                               <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="col-span-2 text-left">標的</span>
@@ -1519,13 +1518,13 @@ const App = () => {
                           </td>
 
                           {/* ======= 區塊 4：操作按鈕 ======= */}
-                          <td className="px-4 py-2 md:py-2 text-right align-middle flex justify-end md:table-cell bg-slate-50/50 md:bg-transparent rounded-b-xl md:rounded-none"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 md:bg-transparent w-full md:w-auto"> 
                             {!isGuestMode && (
-                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto mt-2 md:mt-0">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
+                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
                                         <Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span>
                                     </button>
-                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位">
+                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位">
                                         <Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span>
                                     </button>
                                 </div>
@@ -1535,7 +1534,7 @@ const App = () => {
                       );
                   })}
                   {processedPositions.length === 0 && (
-                    <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-400">目前沒有部位，請點擊右上角「新增」</td></tr>
+                    <tr className="block md:table-row"><td colSpan="6" className="block md:table-cell px-6 py-12 text-center text-slate-400 w-full">目前沒有部位，請點擊右上角「新增」</td></tr>
                   )}
                 </tbody>
               </table>
