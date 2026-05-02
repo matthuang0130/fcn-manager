@@ -8,6 +8,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 2. Added isInitializing state for cloud data fetching
  * 3. Added debounced auto-save to cloud
  * 4. Added cache-busting (?t=Date.now() & cache: 'no-store') to prevent Vercel caching old password states.
+ * 5. Added responsive design (Tailwind md: prefix) to highly compress table width on mobile screens, reducing horizontal scroll.
  */
 
 // --- 1. Constants ---
@@ -1413,14 +1414,17 @@ const App = () => {
               <div className="flex items-center gap-2"><Briefcase size={16} className="text-slate-400"/><h2 className="font-bold text-slate-700 text-sm">{activeClient.name} 的部位</h2></div>
               <span className="text-[10px] text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[800px]">
+            
+            {/* 調整 1：在手機版將表格最小寬度從 800px 降到 550px，並保留底部的滑動空間 */}
+            <div className="overflow-x-auto pb-2">
+              <table className="w-full text-left border-collapse min-w-[550px] md:min-w-[800px]">
                 <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr className="text-sm text-slate-600 font-bold">
-                    <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
-                    <th className="px-4 py-3 text-center w-40">本金 / 月息</th>
-                    <th className="px-4 py-3">連結標的情況</th>
-                    <th className="px-4 py-3 text-right w-20">操作</th>
+                  {/* 調整 2：手機版標題字體縮小 (text-xs) */}
+                  <tr className="text-xs md:text-sm text-slate-600 font-bold">
+                    <th className="px-2 md:px-4 py-3 min-w-[200px] md:min-w-[260px]">產品資訊</th>
+                    <th className="px-2 md:px-4 py-3 text-center w-24 md:w-40">本金 / 月息</th>
+                    <th className="px-2 md:px-4 py-3">連結標的情況</th>
+                    <th className="px-2 md:px-4 py-3 text-right w-16 md:w-20">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1430,39 +1434,42 @@ const App = () => {
 
                       return (
                         <tr key={pos.id} className={`${rowClass} transition group`}>
-                          <td className="px-4 py-2 align-middle"> 
+                          {/* 調整 3：所有儲存格在手機版將左右留白 (padding) 從 4 縮減成 2 */}
+                          <td className="px-2 md:px-4 py-2 align-middle"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               <div className="text-sm font-black text-slate-800 whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
+                               {/* 手機版產品名稱字體略為縮小 */}
+                               <div className="text-xs md:text-sm font-black text-slate-800 whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col gap-1.5">
-                                 <div className="flex flex-wrap gap-2 items-center">
-                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
-                                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
+                                 <div className="flex flex-wrap gap-1 md:gap-2 items-center">
+                                     <span className="bg-slate-100 px-1.5 md:px-2 py-0.5 rounded text-[10px] md:text-xs text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
+                                     <span className="bg-blue-50 px-1.5 md:px-2 py-0.5 rounded text-[10px] md:text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
                                  </div>
                                  
-                                 <div className="flex flex-wrap gap-2 mt-2 text-[11px] font-bold">
-                                     <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100">KO {pos.koLevel}%</span>
-                                     <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
-                                     <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
+                                 <div className="flex flex-wrap gap-1 md:gap-2 mt-1 md:mt-2 text-[10px] md:text-[11px] font-bold">
+                                     <span className="px-1.5 md:px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100">KO {pos.koLevel}%</span>
+                                     <span className="px-1.5 md:px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
+                                     <span className="px-1.5 md:px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
                                  </div>
                             </div>
-                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
+                            <div className="flex items-center gap-1 text-[9px] md:text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
                           </td>
                           
-                          <td className="px-4 py-2 align-middle"> 
+                          <td className="px-2 md:px-4 py-2 align-middle"> 
                             <div className="flex flex-col items-center justify-center h-full">
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-center items-center gap-2 w-28 h-auto py-3"> 
-                                    <div className="text-center w-full border-b border-slate-100 pb-2"> 
-                                        <span className="text-xs text-slate-500 font-bold tracking-widest block mb-1">本金</span> 
-                                        <div className="text-slate-800 font-black text-lg leading-tight truncate w-full">
-                                           {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
+                                {/* 調整 4：手機版的金額小卡大幅縮減 padding 與字體，寬度從 w-28 縮減至 w-20 */}
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 md:p-3 shadow-sm flex flex-col justify-center items-center gap-1 md:gap-2 w-20 md:w-28 h-auto py-2 md:py-3"> 
+                                    <div className="text-center w-full border-b border-slate-100 pb-1 md:pb-2"> 
+                                        <span className="text-[10px] md:text-xs text-slate-500 font-bold tracking-widest block mb-0.5 md:mb-1">本金</span> 
+                                        <div className="text-slate-800 font-black text-sm md:text-lg leading-tight truncate w-full">
+                                           {formatToWan(pos.nominal)}<span className="text-[10px] md:text-xs ml-0.5">萬</span>
                                         </div>
                                     </div>
-                                    <div className="text-center w-full pt-1">
-                                        <span className="text-xs text-red-600 font-bold tracking-widest block mb-1">月息</span> 
-                                        <div className="text-red-700 font-black text-lg leading-tight truncate w-full"> 
+                                    <div className="text-center w-full pt-0.5 md:pt-1">
+                                        <span className="text-[10px] md:text-xs text-red-600 font-bold tracking-widest block mb-0.5 md:mb-1">月息</span> 
+                                        <div className="text-red-700 font-black text-sm md:text-lg leading-tight truncate w-full"> 
                                            {pos.monthlyCoupon.toLocaleString()}
                                         </div>
                                     </div>
@@ -1470,17 +1477,15 @@ const App = () => {
                             </div>
                           </td>
 
-                          <td className="px-4 py-2 align-middle"> 
+                          <td className="px-2 md:px-4 py-2 align-middle"> 
                             <div className="flex flex-col gap-1"> 
-                              {/* Table Header - Mobile Optimized Layout (5 cols) */}
-                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 text-[9px] sm:text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
                                   <span className="text-right text-red-600">KO</span>
                                   <span className="text-right text-slate-500">履約</span>
                                   <span className="text-right text-green-600">KI</span>
                               </div>
-                              {/* Table Rows */}
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
                                   <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 sm:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 hover:bg-slate-50 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : ''}`}>
@@ -1499,14 +1504,12 @@ const App = () => {
                                             
                                             <span className={`font-black text-xs sm:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
                                         </div>
-                                        {/* Mobile: Stacked Price */}
                                         <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             ${u.currentPrice.toLocaleString()}
                                         </span>
                                         {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    {/* Desktop: Price Column */}
                                     <span className={`hidden sm:block font-mono font-black text-right text-sm sm:text-base ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
@@ -1519,7 +1522,7 @@ const App = () => {
                               })}
                             </div>
                           </td>
-                          <td className="px-4 py-2 text-right align-middle"> 
+                          <td className="px-2 md:px-4 py-2 text-right align-middle"> 
                             {!isGuestMode && (
                                 <div className="flex flex-col items-end gap-2 h-full justify-center">
                                     <button onClick={() => handleOpenEditModal(pos)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" title="編輯部位"><Pencil size={18} /></button>
