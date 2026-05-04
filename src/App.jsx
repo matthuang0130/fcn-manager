@@ -9,6 +9,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 3. Added debounced auto-save to cloud
  * 4. Added cache-busting (?t=Date.now() & cache: 'no-store') to prevent Vercel caching old password states.
  * 5. UI Upgrade: Stable Responsive Cards. Mobile uses block layout for cards, Desktop uses native table.
+ * 6. Native URL Shortener: Uses /api/share KV storage to generate ultra-short shareable URLs.
  */
 
 // --- 1. Constants ---
@@ -67,16 +68,7 @@ const formatToWan = (val) => {
     return parseFloat(wan.toFixed(2)).toString(); 
 };
 
-const minifyData = (payload) => ({
-    v: 1, n: payload.clientName, t: payload.lastUpdated,
-    s: payload.sheetId,
-    p: payload.positions.map(p => [
-        p.productName, p.issuer, p.nominal, p.currency, p.couponRate, p.koLevel, p.kiLevel, p.strikeLevel, 
-        p.strikeDate, p.koObservationStartDate, p.maturityDate, p.tenor, 
-        p.underlyings.map(u => [u.ticker, u.entryPrice, u.memoryKO ? 1 : 0])
-    ]), m: payload.prices
-});
-
+// 舊版的解碼函數 (保留以防舊連結失效)
 const unminifyData = (minified) => {
     if (!minified.v) return minified; 
     return {
@@ -663,7 +655,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const handleCopy = () => {
       const success = copyToClipboard(link);
       if(success) { setCopyStatus("已複製！"); setTimeout(() => setCopyStatus("複製連結"), 2000); }
-      else prompt("請手 ক্যামের動複製：", link);
+      else prompt("請手動複製：", link);
   };
 
   if(!isOpen) return null;
@@ -728,7 +720,7 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
         {isGeneratingShareLink && (
             <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm animate-in fade-in">
                 <div className="animate-spin text-blue-600 mb-2"><RefreshCw size={24} /></div>
-                <span className="text-xs font-bold text-slate-600">正在產生縮網址...</span>
+                <span className="text-xs font-bold text-slate-600">正在產生專屬網址...</span>
             </div>
         )}
 
@@ -855,7 +847,7 @@ const App = () => {
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestData, setGuestData] = useState(null);
 
-  // --- 狀態管理 (預設空值或預設值，等待 API 抓取) ---
+  // --- 狀態管理 ---
   const [isInitializing, setIsInitializing] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
@@ -920,21 +912,50 @@ const App = () => {
     };
 
     const hash = window.location.hash;
-    if (hash && hash.startsWith('#share=')) {
+    
+    // ★ 處理新的超短網址
+    if (hash && hash.startsWith('#s=')) {
+        const shareId = hash.replace('#s=', '');
+        const fetchShareData = async () => {
+            try {
+                const res = await fetch(`/api/share?id=${shareId}`);
+                if (!res.ok) throw new Error('無法讀取');
+                const decoded = await res.json();
+                setGuestData(decoded); 
+                setIsGuestMode(true);
+                if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); 
+                if (decoded.prices) setMarketPrices(decoded.prices);
+                if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
+                setViewMode('dashboard');
+                window.history.replaceState(null, '', window.location.pathname);
+            } catch (e) {
+                console.error("Share load error", e);
+                alert("此連結已失效或過期");
+            } finally {
+                setIsInitializing(false);
+                setIsDataLoaded(false); 
+            }
+        };
+        fetchShareData();
+        return;
+    } 
+    // 保留相容舊的長網址
+    else if (hash && hash.startsWith('#share=')) {
         const shareCode = hash.replace('#share=', '');
-        if(!shareCode) return;
-        try {
-            const decodedRaw = JSON.parse(base64UrlDecode(shareCode));
-            const decoded = unminifyData(decodedRaw);
-            setGuestData(decoded); setIsGuestMode(true);
-            if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); 
-            if (decoded.prices) setMarketPrices(decoded.prices);
-            if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
-            setViewMode('dashboard');
-            window.history.replaceState(null, '', window.location.pathname);
-        } catch (e) {
-            console.error("Hash parse error", e);
-            alert("連結無效或資料已損毀");
+        if(shareCode) {
+            try {
+                const decodedRaw = JSON.parse(base64UrlDecode(shareCode));
+                const decoded = unminifyData(decodedRaw);
+                setGuestData(decoded); setIsGuestMode(true);
+                if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); 
+                if (decoded.prices) setMarketPrices(decoded.prices);
+                if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
+                setViewMode('dashboard');
+                window.history.replaceState(null, '', window.location.pathname);
+            } catch (e) {
+                console.error("Hash parse error", e);
+                alert("連結無效或資料已損毀");
+            }
         }
         setIsInitializing(false);
         setIsDataLoaded(false); 
@@ -1198,6 +1219,7 @@ const App = () => {
   const handleAddClient = (name) => { checkAuth(() => { if (name) { const newId = `c${Date.now()}`; setClients(prev => [...prev, { id: newId, name }]); setActiveClientId(newId); } }); };
   const handleDeleteClient = (id) => { checkAuth(() => { if (clients.length <= 1) return alert("至少需保留一位"); if (confirm("確定刪除？")) { setClients(prev => prev.filter(c => c.id !== id)); setAllPositions(prev => prev.filter(p => p.clientId !== id)); if (activeClientId === id) setActiveClientId(clients[0].id); } }); };
 
+  // ★ 全新：產生雲端超短網址
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
@@ -1206,22 +1228,31 @@ const App = () => {
           const clientPositions = allPositions.filter(p => p.clientId === clientId);
           const relevantPrices = {};
           clientPositions.forEach(p => { p.underlyings.forEach(u => { const price = getPriceForTicker(u.ticker); if (price !== undefined) relevantPrices[u.ticker] = price; }); });
+          
           const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated, sheetId: googleSheetId };
-          const minified = minifyData(payload);
-          const jsonString = JSON.stringify(minified);
-          const encoded = base64UrlEncode(jsonString);
+          
+          // 呼叫新的短網址 API
+          const response = await fetch('/api/share', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+          });
+          
+          const data = await response.json();
+          if (!data.shareId) throw new Error("短網址產生失敗");
+
           const baseUrl = window.location.href.split(/[?#]/)[0];
-          const longUrl = `${baseUrl}#share=${encoded}`;
-          let finalUrl = longUrl;
-          try {
-              const tinyApi = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`;
-              const shortUrl = await fetchWithFallback(tinyApi);
-              if (shortUrl && shortUrl.startsWith('http')) { finalUrl = shortUrl; }
-          } catch (err) { console.warn("URL shortening failed, using long URL", err); }
-          setCurrentShareData({ url: finalUrl, name: client.name });
+          const shortUrl = `${baseUrl}#s=${data.shareId}`;
+          
+          setCurrentShareData({ url: shortUrl, name: client.name });
           setIsClientManagerOpen(false); 
           setIsShareLinkModalOpen(true);
-      } catch (e) { alert("連結生成失敗"); console.error(e); } finally { setIsGeneratingShareLink(false); }
+      } catch (e) { 
+          alert("連結生成失敗，請確認網路或 API 設定。"); 
+          console.error(e); 
+      } finally { 
+          setIsGeneratingShareLink(false); 
+      }
     };
 
   const handleExitGuestMode = () => { if(confirm("確定要登出嗎？")) { setIsGuestMode(false); setGuestData(null); setViewMode('landing'); window.history.replaceState(null, '', window.location.pathname); } };
@@ -1269,8 +1300,7 @@ const App = () => {
       return (
           <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
               <Loader className="animate-spin text-blue-600 mb-4" size={48} />
-              <h2 className="text-xl font-bold text-slate-800">正在連接雲端資料庫</h2>
-              <p className="text-sm text-slate-500 mt-2">請稍候...</p>
+              <h2 className="text-xl font-bold text-slate-800">正在讀取資料...</h2>
           </div>
       );
   }
@@ -1390,9 +1420,6 @@ const App = () => {
 
           </div>
           
-          {/* ========================================================================================= */}
-          {/* ========================== 終極響應式卡片表格區塊 (Responsive Cards) ========================== */}
-          {/* ========================================================================================= */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
               <div className="flex items-center gap-2"><Briefcase size={16} className="text-slate-400"/><h2 className="font-bold text-slate-700 text-sm">{activeClient.name} 的部位</h2></div>
@@ -1400,10 +1427,8 @@ const App = () => {
             </div>
             
             <div className="w-full p-3 md:p-0">
-              {/* 在手機版變成 block，電腦版維持 table */}
-              <table className="w-full text-left border-collapse block md:table min-w-full">
+              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[800px]">
                 
-                {/* 電腦版表頭，手機版隱藏 */}
                 <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
                   <tr className="text-sm text-slate-600 font-bold">
                     <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
@@ -1413,17 +1438,14 @@ const App = () => {
                   </tr>
                 </thead>
                 
-                {/* 手機版：加上卡片間距；電腦版維持一般細線 */}
                 <tbody className="block md:table-row-group md:divide-y md:divide-slate-100">
                   {processedPositions.map((pos) => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
                       const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
 
                       return (
-                        // 手機版變成獨立的圓角邊框卡片 (mb-4)，電腦版維持無圓角的 table-row
                         <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
                           
-                          {/* ======= 區塊 1：產品資訊 ======= */}
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
                             <div className="flex items-center gap-2 mb-2">
                                <span className={`text-[10px] px-1.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
@@ -1444,9 +1466,7 @@ const App = () => {
                             <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
                           </td>
                           
-                          {/* ======= 區塊 2：金額與月息 ======= */}
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto bg-slate-50/50 md:bg-transparent"> 
-                            {/* 手機版改為橫向排列，電腦版維持置中直向 */}
                             <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2 w-full">
                                 <span className="md:hidden text-xs font-bold text-slate-500">本金與月息</span>
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-28 h-auto py-2 md:py-3 px-4 md:px-2"> 
@@ -1467,7 +1487,6 @@ const App = () => {
                             </div>
                           </td>
 
-                          {/* ======= 區塊 3：連結標的 ======= */}
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
                             <div className="flex flex-col gap-1 w-full"> 
                               <span className="md:hidden text-xs font-bold text-slate-500 mb-1">連結標的情況</span>
@@ -1496,14 +1515,12 @@ const App = () => {
                                             
                                             <span className={`font-black text-xs md:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
                                         </div>
-                                        {/* 手機版的股價顯示在這裡 */}
                                         <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             {pos.currency === 'JPY' ? '¥' : '$'}{u.currentPrice.toLocaleString()}
                                         </span>
                                         {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    {/* 電腦版的股價欄位 */}
                                     <span className={`hidden sm:block font-mono font-black text-right text-xs md:text-sm ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
@@ -1517,14 +1534,13 @@ const App = () => {
                             </div>
                           </td>
 
-                          {/* ======= 區塊 4：操作按鈕 ======= */}
                           <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 md:bg-transparent w-full md:w-auto"> 
                             {!isGuestMode && (
-                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
+                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto mt-2 md:mt-0">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
                                         <Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span>
                                     </button>
-                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位">
+                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位">
                                         <Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span>
                                     </button>
                                 </div>
@@ -1540,7 +1556,6 @@ const App = () => {
               </table>
             </div>
           </div>
-          {/* ========================================================================================= */}
           
         </div>
       </main>
