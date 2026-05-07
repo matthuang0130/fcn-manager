@@ -10,7 +10,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 4. Added cache-busting (?t=Date.now() & cache: 'no-store')
  * 5. UI Upgrade: Stable Responsive Cards. 
  * 6. Native URL Shortener: Uses /api/share KV storage.
- * 7. Feature: Added Step-down FCN support (Monthly observation + Step-down KO rate).
+ * 7. Feature: Step-down FCN support with 0-month logic and Weekend Holiday Delay.
  */
 
 // --- 1. Constants ---
@@ -827,7 +827,6 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
              <div><label className="text-xs font-bold text-slate-500">Strike%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold" value={newPosition.strikeLevel} onChange={e=>setNewPosition({...newPosition, strikeLevel:e.target.value})}/></div>
              <div><label className="text-xs font-bold text-slate-500">首期 KO%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold text-green-600" value={newPosition.koLevel} onChange={e=>setNewPosition({...newPosition, koLevel:e.target.value})}/></div>
              
-             {/* ★ 新增：KO 型態與遞減率設定 */}
              <div className="flex gap-2">
                  <div className="flex-1">
                      <label className="text-xs font-bold text-slate-500">觀察頻率</label>
@@ -909,7 +908,6 @@ const App = () => {
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
 
-  // --- 初始化：從雲端載入資料 ---
   useEffect(() => {
     const loadCloudData = async () => {
       try {
@@ -991,7 +989,6 @@ const App = () => {
     }
   }, []);
 
-  // --- 自動背景儲存：監聽狀態變化並寫入雲端 ---
   useEffect(() => {
     if (!isDataLoaded || isGuestMode) return;
 
@@ -1040,20 +1037,44 @@ const App = () => {
       }
   };
 
-  // ★ 新增計算動態 KO 門檻的獨立函數
+  // ★ 核心邏輯：計算動態遞減 KO 門檻 (第 1 個月 100%，第 2 個月才開始降)
   const getDynamicKoLevel = (pos, targetDateObj) => {
       if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
       const start = new Date(pos.koObservationStartDate);
+      
       let monthsPassed = (targetDateObj.getFullYear() - start.getFullYear()) * 12 + (targetDateObj.getMonth() - start.getMonth());
       
-      // 如果還沒到這個月的這一天，就不算滿一個月
+      // 未滿一個月
       if (targetDateObj.getDate() < start.getDate()) monthsPassed--;
       
-      if (monthsPassed <= 0) return pos.koLevel; // 第 1 個月 (或之前) 都是原始 KO
-      return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); // 之後逐月遞減
+      if (monthsPassed <= 0) return pos.koLevel; // 第 1 個月或之前
+      return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); // 第 2 個月起
   };
 
-  // ★ 升級版 Auto-update Memory KO status
+  // ★ 核心邏輯：判斷今天是否為觀察日 (包含假日順延)
+  const checkIsObservationDay = (pos, todayDate) => {
+      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return true; // Daily 每天都是觀察日
+      
+      const start = new Date(pos.koObservationStartDate);
+      const targetDD = start.getDate();
+      
+      // 找出這個月理應觀察的原始日期
+      let expectedThisMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), targetDD);
+      
+      // 假日順延邏輯 (0=週日, 6=週六)
+      if (expectedThisMonth.getDay() === 6) {
+          expectedThisMonth.setDate(expectedThisMonth.getDate() + 2); // 六 -> 一
+      } else if (expectedThisMonth.getDay() === 0) {
+          expectedThisMonth.setDate(expectedThisMonth.getDate() + 1); // 日 -> 一
+      }
+
+      // 判斷今天是不是「順延後的真實觀察日」
+      return todayDate.getFullYear() === expectedThisMonth.getFullYear() && 
+             todayDate.getMonth() === expectedThisMonth.getMonth() && 
+             todayDate.getDate() === expectedThisMonth.getDate();
+  };
+
+  // 升級版 Auto-update Memory KO status
   useEffect(() => {
       const todayStr = new Date().toISOString().split('T')[0];
       const todayDate = new Date(todayStr);
@@ -1061,17 +1082,8 @@ const App = () => {
       
       const updatedPositions = allPositions.map(pos => {
           let posUpdated = false;
-          
-          // 計算這個部位「現在」的 KO Level 應該是多少
           const currentDynamicKoLevel = getDynamicKoLevel(pos, todayDate);
-          
-          // 判斷今天是不是「符合資格的觀察日」
-          let isObservationDay = true; // 天天觀察預設為 true
-          if (pos.koType === 'Monthly' && pos.koObservationStartDate) {
-              const start = new Date(pos.koObservationStartDate);
-              // 逐月觀察：只有日期(DD)一模一樣的那天才算數
-              isObservationDay = (todayDate.getDate() === start.getDate());
-          }
+          const isObservationDay = checkIsObservationDay(pos, todayDate);
 
           const newUnderlyings = pos.underlyings.map(u => {
               const currentPrice = (() => {
@@ -1081,10 +1093,8 @@ const App = () => {
                    return foundKey ? marketPrices[foundKey] : u.entryPrice;
               })();
 
-              // 使用動態遞減後的 KO % 來算實際的 KO 價格
               const currentKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
               
-              // 觸價條件：沒有標記過 && 價格到了 && 已經開始觀察 && 今天是觀察日
               if (!u.memoryKO && currentPrice >= currentKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate && isObservationDay) {
                   posUpdated = true;
                   hasUpdates = true;
@@ -1157,8 +1167,6 @@ const App = () => {
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
     const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
-    
-    // ★ 取得畫面上要顯示的「當前動態 KO」
     const currentDynamicKoLevel = getDynamicKoLevel(pos, new Date());
 
     const underlyingDetails = (pos.underlyings || []).map(u => {
@@ -1171,7 +1179,7 @@ const App = () => {
           currentPrice, 
           performance, 
           kiPrice: u.entryPrice * (pos.kiLevel/100), 
-          koPrice: u.entryPrice * (currentDynamicKoLevel/100), // ★ 用遞減後的算現價
+          koPrice: u.entryPrice * (currentDynamicKoLevel/100),
           strikePrice: u.entryPrice * (pos.strikeLevel/100) 
       };
       if (performance < minPerf) { minPerf = performance; laggard = detail; }
@@ -1230,7 +1238,7 @@ const App = () => {
 
     if (successCount > 0) {
         setMarketPrices(updatedPrices);
-        setLastUpdated(new Date().toLocaleString() + " (即時 API)");
+        setLastUpdated(new Date().toLocaleString() + " (手動更新)");
         alert(`✅ 即時報價更新完成！(成功更新 ${successCount} 檔標的)`);
     } else {
         alert("❌ 無法抓取報價，請確認網路連線或 API 設定。");
@@ -1257,7 +1265,6 @@ const App = () => {
     setMarketPrices(updatedPrices);
     const tickersStr = validUnderlyings.map(u => u.ticker).join('/');
     
-    // ★ 處理新增的存檔邏輯
     const entryData = {
       clientId: activeClientId, 
       productName: formPosition.productName || `FCN ${tickersStr}`, 
@@ -1526,7 +1533,6 @@ const App = () => {
                                      <span className="bg-blue-50 px-2 py-0.5 rounded text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
                                  </div>
                                  <div className="flex flex-wrap gap-2 mt-1 md:mt-0 text-[11px] font-bold items-center">
-                                     {/* ★ 視覺優化：顯示當前動態 KO 門檻 */}
                                      <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100 flex gap-1">
                                         KO {pos.currentDynamicKoLevel}% 
                                         {pos.koType === 'Monthly' && <span className="opacity-60 font-medium">(逐月-{pos.stepDownRate}%)</span>}
@@ -1608,7 +1614,7 @@ const App = () => {
 
                           <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 md:bg-transparent w-full md:w-auto"> 
                             {!isGuestMode && (
-                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto">
+                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto mt-2 md:mt-0">
                                     <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
                                         <Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span>
                                     </button>
