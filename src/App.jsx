@@ -11,6 +11,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 5. UI Upgrade: Stable Responsive Cards. 
  * 6. Native URL Shortener: Uses /api/share KV storage.
  * 7. Feature: Step-down FCN support with 0-month logic and Weekend Holiday Delay.
+ * 8. Security: Hidden "Sync Live Prices" button from Guest view to prevent false intraday KO panics.
  */
 
 // --- 1. Constants ---
@@ -69,7 +70,6 @@ const formatToWan = (val) => {
     return parseFloat(wan.toFixed(2)).toString(); 
 };
 
-// 舊版的解碼函數 (保留以防舊連結失效)
 const unminifyData = (minified) => {
     if (!minified.v) return minified; 
     return {
@@ -1037,44 +1037,32 @@ const App = () => {
       }
   };
 
-  // ★ 核心邏輯：計算動態遞減 KO 門檻 (第 1 個月 100%，第 2 個月才開始降)
   const getDynamicKoLevel = (pos, targetDateObj) => {
       if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
       const start = new Date(pos.koObservationStartDate);
-      
       let monthsPassed = (targetDateObj.getFullYear() - start.getFullYear()) * 12 + (targetDateObj.getMonth() - start.getMonth());
-      
-      // 未滿一個月
       if (targetDateObj.getDate() < start.getDate()) monthsPassed--;
-      
-      if (monthsPassed <= 0) return pos.koLevel; // 第 1 個月或之前
-      return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); // 第 2 個月起
+      if (monthsPassed <= 0) return pos.koLevel; 
+      return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); 
   };
 
-  // ★ 核心邏輯：判斷今天是否為觀察日 (包含假日順延)
   const checkIsObservationDay = (pos, todayDate) => {
-      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return true; // Daily 每天都是觀察日
-      
+      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return true; 
       const start = new Date(pos.koObservationStartDate);
       const targetDD = start.getDate();
-      
-      // 找出這個月理應觀察的原始日期
       let expectedThisMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), targetDD);
       
-      // 假日順延邏輯 (0=週日, 6=週六)
       if (expectedThisMonth.getDay() === 6) {
-          expectedThisMonth.setDate(expectedThisMonth.getDate() + 2); // 六 -> 一
+          expectedThisMonth.setDate(expectedThisMonth.getDate() + 2); 
       } else if (expectedThisMonth.getDay() === 0) {
-          expectedThisMonth.setDate(expectedThisMonth.getDate() + 1); // 日 -> 一
+          expectedThisMonth.setDate(expectedThisMonth.getDate() + 1); 
       }
 
-      // 判斷今天是不是「順延後的真實觀察日」
       return todayDate.getFullYear() === expectedThisMonth.getFullYear() && 
              todayDate.getMonth() === expectedThisMonth.getMonth() && 
              todayDate.getDate() === expectedThisMonth.getDate();
   };
 
-  // 升級版 Auto-update Memory KO status
   useEffect(() => {
       const todayStr = new Date().toISOString().split('T')[0];
       const todayDate = new Date(todayStr);
@@ -1412,14 +1400,14 @@ const App = () => {
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
                <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
 
-               <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ml-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                   <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
-                   <span className="hidden sm:inline">更新即時報價</span>
-                   <span className="sm:hidden">更新報價</span>
-               </button>
-
+               {/* ★ 隱藏訪客的更新報價按鈕 */}
                {!isGuestMode && (
                    <>
+                    <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
+                        <span className="hidden sm:inline">更新即時報價</span>
+                        <span className="sm:hidden">更新報價</span>
+                    </button>
                     <button onClick={() => checkAuth(() => setIsDataSyncModalOpen(true))} className="flex-none flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 text-white border border-purple-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap shadow-md">
                         <ArrowRightLeft size={16} />
                         <span>資料同步</span>
@@ -1614,7 +1602,7 @@ const App = () => {
 
                           <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 md:bg-transparent w-full md:w-auto"> 
                             {!isGuestMode && (
-                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto mt-2 md:mt-0">
+                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto">
                                     <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
                                         <Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span>
                                     </button>
