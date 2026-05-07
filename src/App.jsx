@@ -7,9 +7,10 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 1. Replaced all localStorage logic with Vercel KV via /api/storage
  * 2. Added isInitializing state for cloud data fetching
  * 3. Added debounced auto-save to cloud
- * 4. Added cache-busting (?t=Date.now() & cache: 'no-store') to prevent Vercel caching old password states.
- * 5. UI Upgrade: Stable Responsive Cards. Mobile uses block layout for cards, Desktop uses native table.
- * 6. Native URL Shortener: Uses /api/share KV storage to generate ultra-short shareable URLs.
+ * 4. Added cache-busting (?t=Date.now() & cache: 'no-store')
+ * 5. UI Upgrade: Stable Responsive Cards. 
+ * 6. Native URL Shortener: Uses /api/share KV storage.
+ * 7. Feature: Added Step-down FCN support (Monthly observation + Step-down KO rate).
  */
 
 // --- 1. Constants ---
@@ -20,7 +21,7 @@ const INITIAL_POSITIONS = [
   {
     id: 1, clientId: 'c1', productName: "FCN Tech SNMSELN02384", issuer: "GS", nominal: 100000, currency: "USD", couponRate: 12.5,
     strikeDate: "2024-01-15", koObservationStartDate: "2024-04-15", tenor: "6 個月", maturityDate: "2024-07-15",
-    koLevel: 105, kiLevel: 70, strikeLevel: 100,
+    koLevel: 105, kiLevel: 70, strikeLevel: 100, koType: "Daily", stepDownRate: 0,
     underlyings: [{ ticker: "NVDA", entryPrice: 550, memoryKO: false }, { ticker: "AMD", entryPrice: 140, memoryKO: false }, { ticker: "TSLA", entryPrice: 200 }, { ticker: "MSFT", entryPrice: 400, memoryKO: false }], status: "Active"
   }
 ];
@@ -29,7 +30,7 @@ const DEFAULT_MARKET_PRICES = { "NVDA": 610.50, "AMD": 135.20, "TSLA": 190.00, "
 
 const DEFAULT_FORM_STATE = {
   productName: "", issuer: "", nominal: 10000, currency: "USD", couponRate: 10,
-  koLevel: 103, kiLevel: 70, strikeLevel: 100,
+  koLevel: 100, kiLevel: 70, strikeLevel: 100, koType: "Daily", stepDownRate: 5,
   strikeDate: new Date().toISOString().split('T')[0],
   koObservationStartDate: "", tenor: "6 個月", maturityDate: ""
 };
@@ -80,7 +81,8 @@ const unminifyData = (minified) => {
             id: index, productName: arr[0], issuer: arr[1], nominal: arr[2], currency: arr[3],
             couponRate: arr[4], koLevel: arr[5], kiLevel: arr[6], strikeLevel: arr[7],
             strikeDate: arr[8], koObservationStartDate: arr[9], maturityDate: arr[10], tenor: arr[11],
-            underlyings: arr[12].map(u => ({ ticker: u[0], entryPrice: u[1], memoryKO: !!u[2] })), status: "Active", clientId: 'guest'
+            underlyings: arr[12].map(u => ({ ticker: u[0], entryPrice: u[1], memoryKO: !!u[2] })), 
+            koType: "Daily", stepDownRate: 0, status: "Active", clientId: 'guest'
         }))
     };
 };
@@ -143,7 +145,9 @@ const parsePortfolioRows = (rows) => {
         'ko': ['ko', 'barrier', '上限', 'knock-out'],
         'strike': ['strike', '履約', '行權'],
         'underlyings': ['underlying', 'tickers', 'stocks', '標的', '連結標的', 'code'],
-        'koObservation': ['observation', '觀察', 'start', '起始', 'ko date', 'begin']
+        'koObservation': ['observation', '觀察', 'start', '起始', 'ko date', 'begin'],
+        'koType': ['type', '頻率', '型態', '觀察頻率'],
+        'stepDownRate': ['step', '遞減', '遞減率']
     };
 
     let headerIdx = -1;
@@ -178,7 +182,9 @@ const parsePortfolioRows = (rows) => {
                 ko: getIndex(row, headerMap.ko, ['observation', 'date', '日', '期', 'start']),
                 strike: getIndex(row, headerMap.strike),
                 underlyings: getIndex(row, headerMap.underlyings),
-                koObservation: getIndex(row, headerMap.koObservation)
+                koObservation: getIndex(row, headerMap.koObservation),
+                koType: getIndex(row, headerMap.koType),
+                stepDownRate: getIndex(row, headerMap.stepDownRate)
             };
             break;
         }
@@ -255,6 +261,9 @@ const parsePortfolioRows = (rows) => {
         }
         if (underlyings.length === 0) underlyings.push({ ticker: "UNKNOWN", entryPrice: 100, memoryKO: false });
 
+        let rawKoType = idx.koType > -1 ? row[idx.koType] : "Daily";
+        let koType = rawKoType.includes("月") || rawKoType.toLowerCase().includes("month") ? "Monthly" : "Daily";
+
         const pos = {
             id: Date.now() + i,
             clientId,
@@ -271,6 +280,8 @@ const parsePortfolioRows = (rows) => {
             strikeDate: "",
             koObservationStartDate: idx.koObservation > -1 ? normalizeDate(row[idx.koObservation]) : "",
             tenor: "",
+            koType,
+            stepDownRate: idx.stepDownRate > -1 ? parsePercent(row[idx.stepDownRate], 0) : 0,
             status: "Active"
         };
         newPositions.push(pos);
@@ -395,7 +406,7 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const textAreaRef = useRef(null);
   useEffect(() => {
     if (isOpen) {
-      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+      const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "觀察頻率", "KI(%)", "KO(%)", "遞減率(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "表現(%)", "狀態"];
       const rows = (allPositions || []).map(pos => {
         const calculated = calculateRisk(pos);
         const clientName = clients.find(c => c.id === pos.clientId)?.name || "未知";
@@ -413,14 +424,15 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
           pos.couponRate, 
           pos.maturityDate, 
           pos.koObservationStartDate || "", 
+          pos.koType === 'Monthly' ? "每月" : "天天",
           pos.kiLevel, 
           pos.koLevel, 
+          pos.koType === 'Monthly' ? (pos.stepDownRate || 0) : 0,
           pos.strikeLevel,
           allUnderlyingsClean, 
           calculated.laggard?.ticker || "", 
           calculated.laggard?.currentPrice || 0, 
           calculated.laggard?.entryPrice || 0, 
-          calculated.laggard?.strikePrice?.toFixed(2) || "0.00",
           calculated.laggard?.performance?.toFixed(2) || "0.00", 
           calculated.riskStatus
         ];
@@ -613,7 +625,7 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                             <li>CSV 連結 (<code>output=csv</code>)</li>
                             <li>網頁發布連結 (<code>/pubhtml</code>)</li>
                         </ul>
-                        <p className="opacity-80 mt-2">支援欄位：產品名稱, 幣別, 本金, 年息, 到期日, KI, KO, <span className="font-bold text-purple-700">履約(%)</span>, <span className="font-bold text-purple-700">KO觀察日</span>, 標的</p>
+                        <p className="opacity-80 mt-2">支援欄位：產品名稱, 本金, 年息, 到期日, KI, KO, 履約, KO觀察日, <span className="font-bold text-purple-700">觀察頻率</span>, <span className="font-bold text-purple-700">遞減率</span></p>
                     </div>
                     
                     <div className="space-y-2">
@@ -805,19 +817,36 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">年息(%)</label>
-              <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              <input type="number" step="0.01" className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 value={newPosition.couponRate} onChange={e => setNewPosition({...newPosition, couponRate: e.target.value})} />
             </div>
           </div>
           
-          <div className="p-3 bg-slate-50 rounded border grid grid-cols-3 gap-4">
-             <div><label className="text-xs font-bold text-slate-500">KI%</label><input type="number" className="w-full border rounded px-2 py-1 text-sm font-bold text-red-600" value={newPosition.kiLevel} onChange={e=>setNewPosition({...newPosition, kiLevel:e.target.value})}/></div>
-             <div><label className="text-xs font-bold text-slate-500">Strike%</label><input type="number" className="w-full border rounded px-2 py-1 text-sm font-bold" value={newPosition.strikeLevel} onChange={e=>setNewPosition({...newPosition, strikeLevel:e.target.value})}/></div>
-             <div><label className="text-xs font-bold text-slate-500">KO%</label><input type="number" className="w-full border rounded px-2 py-1 text-sm font-bold text-green-600" value={newPosition.koLevel} onChange={e=>setNewPosition({...newPosition, koLevel:e.target.value})}/></div>
+          <div className="p-3 bg-slate-50 rounded border grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+             <div><label className="text-xs font-bold text-slate-500">KI%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold text-red-600" value={newPosition.kiLevel} onChange={e=>setNewPosition({...newPosition, kiLevel:e.target.value})}/></div>
+             <div><label className="text-xs font-bold text-slate-500">Strike%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold" value={newPosition.strikeLevel} onChange={e=>setNewPosition({...newPosition, strikeLevel:e.target.value})}/></div>
+             <div><label className="text-xs font-bold text-slate-500">首期 KO%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold text-green-600" value={newPosition.koLevel} onChange={e=>setNewPosition({...newPosition, koLevel:e.target.value})}/></div>
+             
+             {/* ★ 新增：KO 型態與遞減率設定 */}
+             <div className="flex gap-2">
+                 <div className="flex-1">
+                     <label className="text-xs font-bold text-slate-500">觀察頻率</label>
+                     <select className="w-full border rounded px-2 py-1 text-sm font-bold text-blue-600 bg-white" value={newPosition.koType || "Daily"} onChange={e=>setNewPosition({...newPosition, koType:e.target.value})}>
+                        <option value="Daily">天天觀察</option>
+                        <option value="Monthly">每月觀察 (逐月遞減)</option>
+                     </select>
+                 </div>
+                 {newPosition.koType === 'Monthly' && (
+                     <div className="w-16">
+                         <label className="text-xs font-bold text-slate-500">降幅%</label>
+                         <input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold bg-blue-50 text-blue-700" value={newPosition.stepDownRate !== undefined ? newPosition.stepDownRate : 5} onChange={e=>setNewPosition({...newPosition, stepDownRate:e.target.value})}/>
+                     </div>
+                 )}
+             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-             <div><label className="text-xs text-slate-500">KO 觀察日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.koObservationStartDate} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/></div>
+             <div><label className="text-xs text-slate-500">KO 觀察(起)日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.koObservationStartDate} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/></div>
              <div><label className="text-xs text-slate-500">到期日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.maturityDate} onChange={e=>setNewPosition({...newPosition, maturityDate:e.target.value})}/></div>
              <div><label className="text-xs text-slate-500">存續期</label><input type="text" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.tenor} onChange={e=>setNewPosition({...newPosition, tenor:e.target.value})}/></div>
           </div>
@@ -827,7 +856,7 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
             {tempUnderlyings.map(u => (
               <div key={u.id} className="flex gap-2 mb-2">
                 <input type="text" placeholder="代碼" className="w-1/2 border rounded px-2 py-1 text-sm uppercase" value={u.ticker} onChange={e=>updateU(u.id, 'ticker', e.target.value)}/>
-                <input type="number" placeholder="進場價" className="w-1/2 border rounded px-2 py-1 text-sm" value={u.entryPrice} onChange={e=>updateU(u.id, 'entryPrice', e.target.value)}/>
+                <input type="number" step="0.001" placeholder="進場價" className="w-1/2 border rounded px-2 py-1 text-sm" value={u.entryPrice} onChange={e=>updateU(u.id, 'entryPrice', e.target.value)}/>
                 <button type="button" onClick={()=>removeU(u.id)} className="text-slate-400"><Trash2 size={16}/></button>
               </div>
             ))}
@@ -913,7 +942,6 @@ const App = () => {
 
     const hash = window.location.hash;
     
-    // ★ 處理新的超短網址
     if (hash && hash.startsWith('#s=')) {
         const shareId = hash.replace('#s=', '');
         const fetchShareData = async () => {
@@ -939,7 +967,6 @@ const App = () => {
         fetchShareData();
         return;
     } 
-    // 保留相容舊的長網址
     else if (hash && hash.startsWith('#share=')) {
         const shareCode = hash.replace('#share=', '');
         if(shareCode) {
@@ -993,48 +1020,59 @@ const App = () => {
     return () => clearTimeout(timeoutId);
   }, [clients, allPositions, marketPrices, lastUpdated, googleSheetId, portfolioSheetUrl, savedPassword, isDataLoaded, isGuestMode]);
 
-  // --- Helper: Fetch with Fallback ---
   const fetchWithFallback = async (targetUrl) => {
       const decoder = new TextDecoder('utf-8');
-
       const fetchAndDecode = async (url) => {
           const res = await fetch(url, { cache: 'no-store' });
           if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
           const buffer = await res.arrayBuffer();
           return decoder.decode(buffer);
       };
-
       const separator = targetUrl.includes('?') ? '&' : '?';
       const timedUrl = `${targetUrl}${separator}_t=${Date.now()}`;
       const encodedUrl = encodeURIComponent(timedUrl);
 
-      try {
-          return await fetchAndDecode(`https://api.allorigins.win/raw?url=${encodedUrl}`);
-      } catch (e) { console.warn("AllOrigins failed", e); }
-
-      try {
-          return await fetchAndDecode(`https://api.codetabs.com/v1/proxy?quest=${encodedUrl}`);
-      } catch (e) { console.warn("CodeTabs failed", e); }
-      
-      try {
-          return await fetchAndDecode(`https://corsproxy.io/?${encodedUrl}`);
-      } catch (e) { console.warn("CorsProxy failed", e); }
-
-      try {
-          return await fetchAndDecode(timedUrl);
-      } catch (e) { 
-          console.error("All fetch strategies failed", e);
-          throw new Error("無法下載資料 (Network Error)\n\n可能原因：\n1. Google Sheet 未發布或連結權限不足\n2. 網路封鎖了代理服務\n3. 短時間內請求過多\n\n建議：請檢查連結是否為「公開/發布」，或稍後再試。"); 
+      try { return await fetchAndDecode(`https://api.allorigins.win/raw?url=${encodedUrl}`); } catch (e) {}
+      try { return await fetchAndDecode(`https://api.codetabs.com/v1/proxy?quest=${encodedUrl}`); } catch (e) {}
+      try { return await fetchAndDecode(`https://corsproxy.io/?${encodedUrl}`); } catch (e) {}
+      try { return await fetchAndDecode(timedUrl); } catch (e) { 
+          throw new Error("無法下載資料，請檢查連結是否公開"); 
       }
   };
 
-  // Add Effect to Auto-update Memory KO status based on prices
+  // ★ 新增計算動態 KO 門檻的獨立函數
+  const getDynamicKoLevel = (pos, targetDateObj) => {
+      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
+      const start = new Date(pos.koObservationStartDate);
+      let monthsPassed = (targetDateObj.getFullYear() - start.getFullYear()) * 12 + (targetDateObj.getMonth() - start.getMonth());
+      
+      // 如果還沒到這個月的這一天，就不算滿一個月
+      if (targetDateObj.getDate() < start.getDate()) monthsPassed--;
+      
+      if (monthsPassed <= 0) return pos.koLevel; // 第 1 個月 (或之前) 都是原始 KO
+      return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); // 之後逐月遞減
+  };
+
+  // ★ 升級版 Auto-update Memory KO status
   useEffect(() => {
-      const today = new Date().toISOString().split('T')[0];
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayDate = new Date(todayStr);
       let hasUpdates = false;
       
       const updatedPositions = allPositions.map(pos => {
           let posUpdated = false;
+          
+          // 計算這個部位「現在」的 KO Level 應該是多少
+          const currentDynamicKoLevel = getDynamicKoLevel(pos, todayDate);
+          
+          // 判斷今天是不是「符合資格的觀察日」
+          let isObservationDay = true; // 天天觀察預設為 true
+          if (pos.koType === 'Monthly' && pos.koObservationStartDate) {
+              const start = new Date(pos.koObservationStartDate);
+              // 逐月觀察：只有日期(DD)一模一樣的那天才算數
+              isObservationDay = (todayDate.getDate() === start.getDate());
+          }
+
           const newUnderlyings = pos.underlyings.map(u => {
               const currentPrice = (() => {
                    const cleanTicker = u.ticker.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
@@ -1043,9 +1081,11 @@ const App = () => {
                    return foundKey ? marketPrices[foundKey] : u.entryPrice;
               })();
 
-              const koPrice = u.entryPrice * (pos.koLevel / 100);
+              // 使用動態遞減後的 KO % 來算實際的 KO 價格
+              const currentKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
               
-              if (!u.memoryKO && currentPrice >= koPrice && pos.koObservationStartDate && today >= pos.koObservationStartDate) {
+              // 觸價條件：沒有標記過 && 價格到了 && 已經開始觀察 && 今天是觀察日
+              if (!u.memoryKO && currentPrice >= currentKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate && isObservationDay) {
                   posUpdated = true;
                   hasUpdates = true;
                   return { ...u, memoryKO: true };
@@ -1064,7 +1104,6 @@ const App = () => {
       }
   }, [marketPrices, allPositions]);
 
-  // Manual Toggle for Memory KO
   const toggleMemoryKO = (positionId, ticker) => {
       checkAuth(() => {
           setAllPositions(prev => prev.map(p => {
@@ -1117,14 +1156,24 @@ const App = () => {
 
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
-    
     const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
+    
+    // ★ 取得畫面上要顯示的「當前動態 KO」
+    const currentDynamicKoLevel = getDynamicKoLevel(pos, new Date());
 
     const underlyingDetails = (pos.underlyings || []).map(u => {
       const marketPrice = getPriceForTicker(u.ticker);
       const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
       const performance = (currentPrice / u.entryPrice) * 100;
-      const detail = { ...u, currentPrice, performance, kiPrice: u.entryPrice * (pos.kiLevel/100), koPrice: u.entryPrice * (pos.koLevel/100), strikePrice: u.entryPrice * (pos.strikeLevel/100) };
+      
+      const detail = { 
+          ...u, 
+          currentPrice, 
+          performance, 
+          kiPrice: u.entryPrice * (pos.kiLevel/100), 
+          koPrice: u.entryPrice * (currentDynamicKoLevel/100), // ★ 用遞減後的算現價
+          strikePrice: u.entryPrice * (pos.strikeLevel/100) 
+      };
       if (performance < minPerf) { minPerf = performance; laggard = detail; }
       return detail;
     });
@@ -1143,7 +1192,7 @@ const App = () => {
         statusColor = "bg-orange-100 text-orange-800 font-bold border border-orange-300"; 
     } 
     
-    return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon, isProductKO: allTouchedKO };
+    return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon, isProductKO: allTouchedKO, currentDynamicKoLevel };
   };
 
   const processedPositions = useMemo(() => currentClientPositions.map(calculateRisk), [currentClientPositions, marketPrices]);
@@ -1207,8 +1256,26 @@ const App = () => {
     validUnderlyings.forEach(u => { if (getPriceForTicker(u.ticker) === undefined) updatedPrices[u.ticker] = u.entryPrice; });
     setMarketPrices(updatedPrices);
     const tickersStr = validUnderlyings.map(u => u.ticker).join('/');
+    
+    // ★ 處理新增的存檔邏輯
     const entryData = {
-      clientId: activeClientId, productName: formPosition.productName || `FCN ${tickersStr}`, issuer: formPosition.issuer || "Self", nominal: parseFloat(formPosition.nominal), currency: formPosition.currency, couponRate: parseFloat(formPosition.couponRate), strikeDate: formPosition.strikeDate, koObservationStartDate: formPosition.koObservationStartDate, maturityDate: formPosition.maturityDate, tenor: formPosition.tenor, koLevel: parseFloat(formPosition.koLevel), kiLevel: parseFloat(formPosition.kiLevel), strikeLevel: parseFloat(formPosition.strikeLevel), underlyings: validUnderlyings, status: "Active"
+      clientId: activeClientId, 
+      productName: formPosition.productName || `FCN ${tickersStr}`, 
+      issuer: formPosition.issuer || "Self", 
+      nominal: parseFloat(formPosition.nominal), 
+      currency: formPosition.currency, 
+      couponRate: parseFloat(formPosition.couponRate), 
+      strikeDate: formPosition.strikeDate, 
+      koObservationStartDate: formPosition.koObservationStartDate, 
+      maturityDate: formPosition.maturityDate, 
+      tenor: formPosition.tenor, 
+      koLevel: parseFloat(formPosition.koLevel), 
+      kiLevel: parseFloat(formPosition.kiLevel), 
+      strikeLevel: parseFloat(formPosition.strikeLevel), 
+      koType: formPosition.koType || "Daily",
+      stepDownRate: parseFloat(formPosition.stepDownRate || 0),
+      underlyings: validUnderlyings, 
+      status: "Active"
     };
     if (editId) setAllPositions(prev => prev.map(p => p.id === editId ? { ...entryData, id: editId } : p));
     else setAllPositions(prev => [...prev, { ...entryData, id: Date.now() }]);
@@ -1219,7 +1286,6 @@ const App = () => {
   const handleAddClient = (name) => { checkAuth(() => { if (name) { const newId = `c${Date.now()}`; setClients(prev => [...prev, { id: newId, name }]); setActiveClientId(newId); } }); };
   const handleDeleteClient = (id) => { checkAuth(() => { if (clients.length <= 1) return alert("至少需保留一位"); if (confirm("確定刪除？")) { setClients(prev => prev.filter(c => c.id !== id)); setAllPositions(prev => prev.filter(p => p.clientId !== id)); if (activeClientId === id) setActiveClientId(clients[0].id); } }); };
 
-  // ★ 全新：產生雲端超短網址
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
@@ -1231,7 +1297,6 @@ const App = () => {
           
           const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated, sheetId: googleSheetId };
           
-          // 呼叫新的短網址 API
           const response = await fetch('/api/share', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1256,11 +1321,28 @@ const App = () => {
     };
 
   const handleExitGuestMode = () => { if(confirm("確定要登出嗎？")) { setIsGuestMode(false); setGuestData(null); setViewMode('landing'); window.history.replaceState(null, '', window.location.pathname); } };
-  const handleOpenAddModal = () => { checkAuth(() => { setEditId(null); setFormPosition(DEFAULT_FORM_STATE); setFormUnderlyings([{ id: Date.now(), ticker: "", entryPrice: 0 }]); setIsAddModalOpen(true); }); };
-  const handleOpenEditModal = (pos) => { checkAuth(() => { setEditId(pos.id); setFormPosition({ productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate }); setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); setIsAddModalOpen(true); }); };
+  
+  const handleOpenAddModal = () => { checkAuth(() => { 
+      setEditId(null); 
+      setFormPosition(DEFAULT_FORM_STATE); 
+      setFormUnderlyings([{ id: Date.now(), ticker: "", entryPrice: 0 }]); 
+      setIsAddModalOpen(true); 
+  }); };
+  
+  const handleOpenEditModal = (pos) => { checkAuth(() => { 
+      setEditId(pos.id); 
+      setFormPosition({ 
+          productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, 
+          koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, 
+          strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate,
+          koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0
+      }); 
+      setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); 
+      setIsAddModalOpen(true); 
+  }); };
 
   const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "KI(%)", "KO(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "履約價", "表現(%)", "狀態"];
+    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "觀察頻率", "KI(%)", "KO(%)", "遞減率(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "表現(%)", "狀態"];
     const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
       const calculated = calculateRisk(pos);
       const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
@@ -1270,24 +1352,10 @@ const App = () => {
       ).join(' / ');
 
       return [
-        clientName, 
-        pos.productName, 
-        pos.issuer, 
-        pos.currency, 
-        pos.nominal, 
-        pos.couponRate, 
-        pos.maturityDate, 
-        pos.koObservationStartDate || "", 
-        pos.kiLevel, 
-        pos.koLevel, 
-        pos.strikeLevel,
-        allUnderlyingsClean, 
-        calculated.laggard?.ticker || "", 
-        calculated.laggard?.currentPrice || 0, 
-        calculated.laggard?.entryPrice || 0, 
-        calculated.laggard?.strikePrice?.toFixed(2) || "0.00",
-        calculated.laggard?.performance?.toFixed(2) || "0.00", 
-        calculated.riskStatus
+        clientName, pos.productName, pos.issuer, pos.currency, pos.nominal, pos.couponRate, 
+        pos.maturityDate, pos.koObservationStartDate || "", pos.koType === 'Monthly' ? "每月" : "天天",
+        pos.kiLevel, pos.koLevel, pos.koType === 'Monthly' ? (pos.stepDownRate || 0) : 0, pos.strikeLevel,
+        allUnderlyingsClean, calculated.laggard?.ticker || "", calculated.laggard?.currentPrice || 0, calculated.laggard?.entryPrice || 0, calculated.laggard?.performance?.toFixed(2) || "0.00", calculated.riskStatus
       ];
     });
     const csvString = [headers.join(','), ...rows.map(row => row.map(item => `"${String(item).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -1457,8 +1525,12 @@ const App = () => {
                                      <span className="bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
                                      <span className="bg-blue-50 px-2 py-0.5 rounded text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
                                  </div>
-                                 <div className="flex flex-wrap gap-2 mt-1 md:mt-0 text-[11px] font-bold">
-                                     <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100">KO {pos.koLevel}%</span>
+                                 <div className="flex flex-wrap gap-2 mt-1 md:mt-0 text-[11px] font-bold items-center">
+                                     {/* ★ 視覺優化：顯示當前動態 KO 門檻 */}
+                                     <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100 flex gap-1">
+                                        KO {pos.currentDynamicKoLevel}% 
+                                        {pos.koType === 'Monthly' && <span className="opacity-60 font-medium">(逐月-{pos.stepDownRate}%)</span>}
+                                     </span>
                                      <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
                                      <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
                                  </div>
@@ -1536,11 +1608,11 @@ const App = () => {
 
                           <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 md:bg-transparent w-full md:w-auto"> 
                             {!isGuestMode && (
-                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto mt-2 md:mt-0">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
+                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位">
                                         <Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span>
                                     </button>
-                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-1.5 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位">
+                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位">
                                         <Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span>
                                     </button>
                                 </div>
