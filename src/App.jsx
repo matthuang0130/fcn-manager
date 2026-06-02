@@ -14,7 +14,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 8. Security: Hidden "Sync Live Prices" button from Guest view to prevent false intraday KO panics.
  * 9. Layout Fix: Prevent alphanumeric & large numbers from clashing when zoomed.
  * 10. Typography Fix: Restored comfortable font sizes (removed over-shrunk text-[10px]).
- * 11. Grid Fix: Asymmetric flexible layout for underlying prices to completely eliminate clumping at large sizes.
+ * 11. Grid Alignment Fix: Restored stable grid-cols-5/6 to fix mobile wrapping & misalignment issues.
  */
 
 // --- 1. Constants ---
@@ -650,7 +650,7 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                         {isSyncing ? '同步中...' : '開始匯入'}
                     </button>
                     
-                    <div className="text-sm text-slate-400 text-center">
+                    <div className="text-xs text-slate-400 text-center">
                         注意：匯入將會覆蓋此裝置上現有的所有部位資料。
                     </div>
                 </div>
@@ -1492,16 +1492,15 @@ const App = () => {
               <span className="text-xs text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
-            {/* 🌟 升級修正 1：擴大橫向滾動外殼的桌面端安全寬度至 1180px */}
+            {/* 🌟 加上橫向滾動外殼 */}
             <div className="w-full p-3 md:p-0 overflow-x-auto">
-              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[1180px]">
+              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[950px]">
                 
                 <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
                   <tr className="text-sm text-slate-600 font-bold">
                     <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
                     <th className="px-4 py-3 text-center w-44">本金 / 月息</th>
-                    {/* 🌟 升級修正 2：強制給「連結標的情況」欄位最少 520 像素的展示面，防止網頁自動內縮壓縮格子 */}
-                    <th className="px-4 py-3 min-w-[520px]">連結標的情況</th>
+                    <th className="px-4 py-3">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-20">操作</th>
                   </tr>
                 </thead>
@@ -1558,15 +1557,14 @@ const App = () => {
                             </div>
                           </td>
 
-                          {/* 🌟 升級修正 3：強制此單元格底線最小寬度為 520px，提供子網格絕對保護面 */}
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto min-w-[520px]"> 
+                          {/* 🌟 修復核心：強制撑開寬度，保護內部正常五/六等分網格不被擠壓變形 */}
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto md:min-w-[520px]"> 
                             <div className="flex flex-col gap-1 w-full"> 
                               <span className="md:hidden text-sm font-bold text-slate-500 mb-1">連結標的情況</span>
                               
-                              {/* 🌟 升級修正 4：重構不對稱網格。將 5-6 列的均分網格改為「非對稱大比例網格」
-                                  透過 grid-cols-[比重] 為四組價格提供超寬的彈性長度，右側一律加大 gap 呼吸空間 */}
-                              <div className="grid grid-cols-[1.5fr_1.1fr_1fr_1fr] sm:grid-cols-[2fr_1.3fr_1.1fr_1.1fr_1.1fr] gap-2 md:gap-4 text-xs md:text-sm text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
-                                  <span className="col-span-2 sm:col-span-2 text-left">標的</span>
+                              {/* 🌟 完美修復：恢復穩定的 5等分(手機) / 6等分(電腦)，徹底解決手機版變直排一欄的問題 */}
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
+                                  <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
                                   <span className="text-right text-red-600">KO</span>
                                   <span className="text-right text-slate-500">履約</span>
@@ -1575,9 +1573,9 @@ const App = () => {
                               
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  /* 🌟 升級修正 5：資料行同步套用非對稱比例網格 (1.5fr / 2fr 開頭)，徹底釋放高額日圓的顯示寬度 */
-                                  <div key={u.ticker} className={`grid grid-cols-[1.5fr_1.1fr_1fr_1fr] sm:grid-cols-[2fr_1.3fr_1.1fr_1.1fr_1.1fr] gap-2 md:gap-4 items-center border-b border-slate-50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : 'hover:bg-slate-50'}`}>
-                                    <div className="col-span-2 sm:col-span-2 flex flex-col justify-center min-w-0">
+                                  /* 🌟 完美修復：資料列同步使用穩定的 grid-cols-5 / sm:grid-cols-6 */
+                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : 'hover:bg-slate-50'}`}>
+                                    <div className="col-span-2 flex flex-col justify-center min-w-0">
                                         <div className="flex items-center gap-1">
                                             {!isGuestMode && (
                                                 <button 
