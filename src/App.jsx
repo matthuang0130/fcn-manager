@@ -12,6 +12,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 6. Native URL Shortener: Uses /api/share KV storage.
  * 7. Feature: Step-down FCN support with 0-month logic and Weekend Holiday Delay.
  * 8. Security: Hidden "Sync Live Prices" button from Guest view to prevent false intraday KO panics.
+ * 9. Layout Fix: Prevent alphanumeric & large numbers from clashing when zoomed.
  */
 
 // --- 1. Constants ---
@@ -191,7 +192,7 @@ const parsePortfolioRows = (rows) => {
     }
 
     if (headerIdx === -1) {
-         throw new Error(`找不到「產品名稱」欄位。\n\n請確認 Google Sheet 中包含「產品」或「名稱」欄位。\n(偵測到的第一列: ${rows[0] ? rows[0].join(',') : '空'})`);
+        throw new Error(`找不到「產品名稱」欄位。\n\n請確認 Google Sheet 中包含「產品」或「名稱」欄位。\n(偵測到的第一列: ${rows[0] ? rows[0].join(',') : '空'})`);
     }
 
     const newClientsMap = new Map();
@@ -448,7 +449,7 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const handleDownload = () => {
     try {
       const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-      const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
+      const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -1489,13 +1490,15 @@ const App = () => {
               <span className="text-[10px] text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
-            <div className="w-full p-3 md:p-0">
-              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[800px]">
+            {/* 🌟 修正 1：加上橫向滾動外殼，極限放大時提供保護 */}
+            <div className="w-full p-3 md:p-0 overflow-x-auto">
+              {/* 🌟 修正 2：桌面端最小寬度提升至 950px，給予高額日圓數字充足的展示寬度，防止重疊 */}
+              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[950px]">
                 
                 <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
                   <tr className="text-sm text-slate-600 font-bold">
                     <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
-                    <th className="px-4 py-3 text-center w-40">本金 / 月息</th>
+                    <th className="px-4 py-3 text-center w-44">本金 / 月息</th>
                     <th className="px-4 py-3">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-20">操作</th>
                   </tr>
@@ -1522,8 +1525,8 @@ const App = () => {
                                  </div>
                                  <div className="flex flex-wrap gap-2 mt-1 md:mt-0 text-[11px] font-bold items-center">
                                      <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100 flex gap-1">
-                                        KO {pos.currentDynamicKoLevel}% 
-                                        {pos.koType === 'Monthly' && <span className="opacity-60 font-medium">(逐月-{pos.stepDownRate}%)</span>}
+                                         KO {pos.currentDynamicKoLevel}% 
+                                         {pos.koType === 'Monthly' && <span className="opacity-60 font-medium">(逐月-{pos.stepDownRate}%)</span>}
                                      </span>
                                      <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
                                      <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
@@ -1535,17 +1538,18 @@ const App = () => {
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto bg-slate-50/50 md:bg-transparent"> 
                             <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2 w-full">
                                 <span className="md:hidden text-xs font-bold text-slate-500">本金與月息</span>
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-28 h-auto py-2 md:py-3 px-4 md:px-2"> 
+                                {/* 🌟 修正 3：拓寬卡片尺寸 md:min-w-[120px]，防止大額日元利息溢出或重疊 */}
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:min-w-[120px] h-auto py-2 md:py-3 px-4 md:px-2"> 
                                     <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 md:pb-2 flex flex-col md:block"> 
                                         <span className="text-[10px] text-slate-500 font-bold tracking-widest mb-0.5">本金</span> 
-                                        <div className="text-slate-800 font-black text-sm md:text-lg leading-tight truncate">
-                                           {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
+                                        <div className="text-slate-800 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">
+                                           {formatToWan(pos.nominal)}<span className="text-xs ml-0.5 font-bold">萬</span>
                                         </div>
                                     </div>
                                     <div className="h-6 w-px bg-slate-200 md:hidden"></div>
                                     <div className="text-right md:text-center flex-1 md:w-full md:pt-1 flex flex-col md:block">
                                         <span className="text-[10px] text-red-600 font-bold tracking-widest mb-0.5">月息</span> 
-                                        <div className="text-red-700 font-black text-sm md:text-lg leading-tight truncate"> 
+                                        <div className="text-red-700 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap"> 
                                            {pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}
                                         </div>
                                     </div>
@@ -1556,7 +1560,8 @@ const App = () => {
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
                             <div className="flex flex-col gap-1 w-full"> 
                               <span className="md:hidden text-xs font-bold text-slate-500 mb-1">連結標的情況</span>
-                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                              {/* 🌟 修正 4：表頭加入不換行保護 */}
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
                                   <span className="text-right text-red-600">KO</span>
@@ -1581,19 +1586,20 @@ const App = () => {
                                             
                                             <span className={`font-black text-xs md:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
                                         </div>
-                                        <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                        <span className={`sm:hidden font-mono font-black text-[10px] whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             {pos.currency === 'JPY' ? '¥' : '$'}{u.currentPrice.toLocaleString()}
                                         </span>
                                         {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    <span className={`hidden sm:block font-mono font-black text-right text-xs md:text-sm ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                    {/* 🌟 修正 5：所有數字渲染欄位全面套用 whitespace-nowrap，日股數字全面引入 toLocaleString 千分位 */}
+                                    <span className={`hidden sm:block font-mono font-black text-right text-xs md:text-sm whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
 
-                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] md:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-[10px] md:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] md:text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-xs md:text-sm whitespace-nowrap">{Math.round(u.koPrice).toLocaleString()}</span>
+                                    <span className="font-mono text-slate-500 text-right text-xs md:text-sm whitespace-nowrap">{Math.round(u.strikePrice).toLocaleString()}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-xs md:text-sm whitespace-nowrap">{Math.round(u.kiPrice).toLocaleString()}</span>
                                   </div>
                                 );
                               })}
