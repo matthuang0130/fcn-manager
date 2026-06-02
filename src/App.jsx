@@ -15,6 +15,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 9. Layout Fix: Prevent alphanumeric & large numbers from clashing when zoomed.
  * 10. Typography Fix: Restored comfortable font sizes (removed over-shrunk text-[10px]).
  * 11. Grid Alignment Fix: Restored stable grid-cols-5/6 to fix mobile wrapping & misalignment issues.
+ * 12. Logic Fix: Implemented Basket "Worst-of" KO logic (All assets must meet barrier to KO).
  */
 
 // --- 1. Constants ---
@@ -873,6 +874,12 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
   );
 };
 
+const normalizeTicker = (ticker) => {
+  if (!ticker) return "";
+  let normalized = toHalfWidth(ticker.toString()).toUpperCase();
+  return normalized.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
+};
+
 const App = () => {
   const [viewMode, setViewMode] = useState('landing');
   const [isGuestMode, setIsGuestMode] = useState(false);
@@ -910,6 +917,15 @@ const App = () => {
   const [editId, setEditId] = useState(null);
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
+
+  // 🌟 將取得報價的方法移出，供多個 useEffect 共用
+  const getPriceForTicker = (ticker) => {
+    const cleanTarget = normalizeTicker(ticker);
+    if (marketPrices[ticker] !== undefined) return marketPrices[ticker];
+    const foundKey = Object.keys(marketPrices).find(k => normalizeTicker(k) === cleanTarget);
+    if (foundKey) return marketPrices[foundKey];
+    return undefined;
+  };
 
   useEffect(() => {
     const loadCloudData = async () => {
@@ -1066,37 +1082,37 @@ const App = () => {
              todayDate.getDate() === expectedThisMonth.getDate();
   };
 
+  // 🌟 核心修正 3：前端視覺同步改為「全組合判定 (Worst-of Basket)」
   useEffect(() => {
       const todayStr = new Date().toISOString().split('T')[0];
       const todayDate = new Date(todayStr);
       let hasUpdates = false;
       
       const updatedPositions = allPositions.map(pos => {
-          let posUpdated = false;
           const currentDynamicKoLevel = getDynamicKoLevel(pos, todayDate);
           const isObservationDay = checkIsObservationDay(pos, todayDate);
 
-          const newUnderlyings = pos.underlyings.map(u => {
-              const currentPrice = (() => {
-                   const cleanTicker = u.ticker.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
-                   if (marketPrices[u.ticker] !== undefined) return marketPrices[u.ticker];
-                   const foundKey = Object.keys(marketPrices).find(k => k.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim() === cleanTicker);
-                   return foundKey ? marketPrices[foundKey] : u.entryPrice;
-              })();
-
+          let allMeetKo = true;
+          
+          pos.underlyings.forEach(u => {
+              const marketPrice = getPriceForTicker(u.ticker);
+              const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
               const currentKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
               
-              if (!u.memoryKO && currentPrice >= currentKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate && isObservationDay) {
-                  posUpdated = true;
-                  hasUpdates = true;
-                  return { ...u, memoryKO: true };
+              if (currentPrice < currentKoPrice) {
+                  allMeetKo = false; // 只要有一檔沒過門檻，整個組合就不算 KO
               }
-              return u;
           });
 
-          if (posUpdated) {
+          const alreadyKnockedOut = pos.underlyings.every(u => u.memoryKO);
+
+          if (allMeetKo && !alreadyKnockedOut && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate && isObservationDay) {
+              hasUpdates = true;
+              // 組合達成條件，將所有標的標記為已觸價 (打勾)
+              const newUnderlyings = pos.underlyings.map(u => ({ ...u, memoryKO: true }));
               return { ...pos, underlyings: newUnderlyings };
           }
+          
           return pos;
       });
 
@@ -1140,20 +1156,6 @@ const App = () => {
   const handleUnlock = (inputPwd) => { if (inputPwd === savedPassword) { setIsUnlocked(true); setIsPasswordPromptOpen(false); if (pendingAction) { pendingAction(); setPendingAction(null); } } else { alert("密碼錯誤"); } };
   const handleAdminLogin = (inputPwd) => { if (!savedPassword || inputPwd === savedPassword) { setIsUnlocked(true); setIsGuestMode(false); setViewMode('dashboard'); return true; } else { alert("密碼錯誤"); return false; } };
   const handleManualLock = () => { if(savedPassword) setIsUnlocked(false); };
-
-  const getPriceForTicker = (ticker) => {
-    const cleanTarget = normalizeTicker(ticker);
-    if (marketPrices[ticker] !== undefined) return marketPrices[ticker];
-    const foundKey = Object.keys(marketPrices).find(k => normalizeTicker(k) === cleanTarget);
-    if (foundKey) return marketPrices[foundKey];
-    return undefined;
-  };
-  
-  const normalizeTicker = (ticker) => {
-    if (!ticker) return "";
-    let normalized = toHalfWidth(ticker.toString()).toUpperCase();
-    return normalized.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
-  };
 
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
@@ -1492,7 +1494,6 @@ const App = () => {
               <span className="text-xs text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
-            {/* 🌟 加上橫向滾動外殼 */}
             <div className="w-full p-3 md:p-0 overflow-x-auto">
               <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[950px]">
                 
@@ -1557,12 +1558,12 @@ const App = () => {
                             </div>
                           </td>
 
-                          {/* 🌟 修復核心：強制撑開寬度，保護內部正常五/六等分網格不被擠壓變形 */}
+                          {/* 🌟 核心修正：強制撐開寬度，保護內部的等分網格不被擠壓 */}
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto md:min-w-[520px]"> 
                             <div className="flex flex-col gap-1 w-full"> 
                               <span className="md:hidden text-sm font-bold text-slate-500 mb-1">連結標的情況</span>
                               
-                              {/* 🌟 完美修復：恢復穩定的 5等分(手機) / 6等分(電腦)，徹底解決手機版變直排一欄的問題 */}
+                              {/* 🌟 完美修復：恢復最穩定、確保手機不會斷行的 5 等分 / 6 等分網格 */}
                               <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
@@ -1573,7 +1574,6 @@ const App = () => {
                               
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
-                                  /* 🌟 完美修復：資料列同步使用穩定的 grid-cols-5 / sm:grid-cols-6 */
                                   <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : 'hover:bg-slate-50'}`}>
                                     <div className="col-span-2 flex flex-col justify-center min-w-0">
                                         <div className="flex items-center gap-1">
