@@ -10,7 +10,12 @@ async function fetchPrice(ticker) {
     try {
         const cleanTicker = ticker.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
         let fetchTicker = cleanTicker;
-        if (/^\d{4}$/.test(cleanTicker)) fetchTicker = `${cleanTicker}.T`; 
+        
+        // 🌟 升級版日股雷達：只要是 4 個字元且開頭是數字 (如 7203 或 285A)，就自動補 .T
+        if (/^\d[A-Za-z0-9]{3}$/.test(cleanTicker)) {
+            fetchTicker = `${cleanTicker}.T`; 
+        }
+        
         const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
         const data = await res.json();
         return data.chart.result[0].meta.regularMarketPrice;
@@ -50,13 +55,12 @@ async function sendLineMessage(message) {
 }
 
 export default async function handler(req, res) {
-    // 🚀 --- 秘密測試通道：只要網址有 ?test=true 就強制發送 LINE --- 🚀
+    // 秘密測試通道
     if (req.query.test === 'true') {
         await sendLineMessage("🤖 【系統測試】您好！這是來自 FCN 監控系統的測試訊息，代表您的 LINE 警報功能已成功開通！系統將會在每個工作日早上 7 點為您執行自動監控。🎉");
         return res.status(200).json({ success: true, message: "測試訊息已成功發射！請檢查您的手機 LINE 訊息。" });
     }
 
-    // --- 以下為正常的自動排程邏輯 ---
     try {
         const dbKey = process.env.DB_NAMESPACE || 'fcn-portfolio-data';
         const data = await redis.get(dbKey);

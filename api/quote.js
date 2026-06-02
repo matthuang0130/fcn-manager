@@ -1,45 +1,40 @@
-// 使用最穩定的匯入方式
-import yahooFinance from 'yahoo-finance2';
-
 export default async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json');
-  
-  const { ticker } = req.query;
+    const { ticker } = req.query;
+    
+    if (!ticker) {
+        return res.status(400).json({ error: '缺少標的代碼參數' });
+    }
 
-  if (!ticker) {
-    return res.status(400).json({ error: 'Missing ticker' });
-  }
-
-  try {
-    const isNumeric = /^\d+$/.test(ticker);
-    const symbol = isNumeric ? `${ticker}.T` : ticker;
-
-    // 💡 嘗試直接呼叫，如果失敗則自動嘗試實例化呼叫
-    let result;
     try {
-        result = await yahooFinance.quote(symbol);
-    } catch (err) {
-        if (err.message.includes('YahooFinance')) {
-            // 如果報錯說要 new，就在這裡現場 new 一個
-            const YF = yahooFinance.YahooFinance || yahooFinance;
-            const liveYF = new YF();
-            result = await liveYF.quote(symbol);
-        } else {
-            throw err;
+        const cleanTicker = ticker.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
+        let fetchTicker = cleanTicker;
+
+        // 🌟 升級版日股雷達：只要是 4 個字元且開頭是數字 (如 7203 或 285A)，就自動補 .T
+        if (/^\d[A-Za-z0-9]{3}$/.test(cleanTicker)) {
+            fetchTicker = `${cleanTicker}.T`;
         }
+
+        const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
+        
+        if (!response.ok) {
+            throw new Error('Yahoo Finance API 發生錯誤');
+        }
+        
+        const data = await response.json();
+        
+        if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+            throw new Error('找不到該標的報價');
+        }
+        
+        const price = data.chart.result[0].meta.regularMarketPrice;
+
+        if (price !== undefined && price !== null) {
+            return res.status(200).json({ price });
+        } else {
+            throw new Error('回傳資料中沒有價格');
+        }
+    } catch (error) {
+        console.error(`抓取 ${ticker} 報價失敗:`, error);
+        return res.status(500).json({ error: '無法取得報價' });
     }
-
-    if (!result || !result.regularMarketPrice) {
-      return res.status(404).json({ error: 'Price not found' });
-    }
-
-    return res.status(200).json({ price: result.regularMarketPrice });
-
-  } catch (error) {
-    console.error('Final API Error:', error.message);
-    return res.status(500).json({ 
-      error: 'API Error', 
-      message: error.message 
-    });
-  }
 }
