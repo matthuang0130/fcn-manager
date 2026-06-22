@@ -1,6 +1,24 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
+/**
+ * FCN 投資組合管理系統 (Cloud Database Version)
+ * Fixes:
+ * 1. Replaced all localStorage logic with Vercel KV via /api/storage
+ * 2. Added isInitializing state for cloud data fetching
+ * 3. Added debounced auto-save to cloud
+ * 4. Added cache-busting (?t=Date.now() & cache: 'no-store')
+ * 5. UI Upgrade: Stable Responsive Cards. 
+ * 6. Native URL Shortener: Uses /api/share KV storage.
+ * 7. Feature: Step-down FCN support with 0-month logic and Weekend Holiday Delay.
+ * 8. Security: Hidden "Sync Live Prices" button from Guest view to prevent false intraday KO panics.
+ * 9. Layout Fix: Prevent alphanumeric & large numbers from clashing when zoomed.
+ * 10. Typography Fix: Restored comfortable font sizes (removed over-shrunk text-[10px]).
+ * 11. Grid Alignment Fix: Restored stable grid-cols-5/6 to fix mobile wrapping & misalignment issues.
+ * 12. Logic Fix: Independent Memory KO + Manual Next Observation Date Override + Dynamic KO% Display.
+ * 13. Dynamic View Upgrade: Real-time dynamic client connection view (#c=...) replacing static snapshots.
+ */
+
 // --- 1. Constants ---
 
 const DEFAULT_CLIENTS = [{ id: 'c1', name: '預設投資人' }];
@@ -909,7 +927,6 @@ const App = () => {
     return undefined;
   };
 
-  // 🌟 修正：跨越觀察日即刻降階邏輯 (完全使用字串與數字比對，無時差問題)
   const getDynamicKoLevel = (pos, targetDateObj) => {
       if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
       
@@ -991,7 +1008,34 @@ const App = () => {
 
     const hash = window.location.hash;
     
-    if (hash && hash.startsWith('#s=')) {
+    // 🌟 升級修正：支援全新的「即時連動型」視角 (#c=客戶編號)
+    if (hash && hash.startsWith('#c=')) {
+        const clientId = hash.replace('#c=', '');
+        const fetchClientDynamicData = async () => {
+            try {
+                const res = await fetch(`/api/client-view?cid=${clientId}&t=${Date.now()}`, { cache: 'no-store' });
+                if (!res.ok) throw new Error('無法讀取');
+                const decoded = await res.json();
+                setGuestData(decoded); 
+                setIsGuestMode(true);
+                if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); 
+                if (decoded.prices) setMarketPrices(decoded.prices);
+                if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
+                setViewMode('dashboard');
+                window.history.replaceState(null, '', window.location.pathname);
+            } catch (e) {
+                console.error("Dynamic share load error", e);
+                alert("此專屬連結已失效、投資人已被移除或雲端連線失敗。");
+            } finally {
+                setIsInitializing(false);
+                setIsDataLoaded(false); 
+            }
+        };
+        fetchClientDynamicData();
+        return;
+    }
+    // 向下相容舊版的快照型連結 (#s=)
+    else if (hash && hash.startsWith('#s=')) {
         const shareId = hash.replace('#s=', '');
         const fetchShareData = async () => {
             try {
@@ -1007,7 +1051,7 @@ const App = () => {
                 window.history.replaceState(null, '', window.location.pathname);
             } catch (e) {
                 console.error("Share load error", e);
-                alert("此連結已失效或過期");
+                alert("此連結已過期或失效。");
             } finally {
                 setIsInitializing(false);
                 setIsDataLoaded(false); 
@@ -1302,39 +1346,19 @@ const App = () => {
   const handleAddClient = (name) => { checkAuth(() => { if (name) { const newId = `c${Date.now()}`; setClients(prev => [...prev, { id: newId, name }]); setActiveClientId(newId); } }); };
   const handleDeleteClient = (id) => { checkAuth(() => { if (clients.length <= 1) return alert("至少需保留一位"); if (confirm("確定刪除？")) { setClients(prev => prev.filter(c => c.id !== id)); setAllPositions(prev => prev.filter(p => p.clientId !== id)); if (activeClientId === id) setActiveClientId(clients[0].id); } }); };
 
+  // 🌟 核心修正：大幅改造分享連結邏輯，直接串接 #c 專屬動態視角，免等待、免存快照
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
-      setIsGeneratingShareLink(true);
-      try {
-          const clientPositions = allPositions.filter(p => p.clientId === clientId);
-          const relevantPrices = {};
-          clientPositions.forEach(p => { p.underlyings.forEach(u => { const price = getPriceForTicker(u.ticker); if (price !== undefined) relevantPrices[u.ticker] = price; }); });
-          
-          const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated, sheetId: googleSheetId };
-          
-          const response = await fetch('/api/share', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-          });
-          
-          const data = await response.json();
-          if (!data.shareId) throw new Error("短網址產生失敗");
-
-          const baseUrl = window.location.href.split(/[?#]/)[0];
-          const shortUrl = `${baseUrl}#s=${data.shareId}`;
-          
-          setCurrentShareData({ url: shortUrl, name: client.name });
-          setIsClientManagerOpen(false); 
-          setIsShareLinkModalOpen(true);
-      } catch (e) { 
-          alert("連結生成失敗，請確認網路或 API 設定。"); 
-          console.error(e); 
-      } finally { 
-          setIsGeneratingShareLink(false); 
-      }
-    };
+      
+      // 直接使用客戶識別代碼組合，達成「後台更新、前台立刻同步」的活看板
+      const baseUrl = window.location.href.split(/[?#]/)[0];
+      const liveUrl = `${baseUrl}#c=${clientId}`;
+      
+      setCurrentShareData({ url: liveUrl, name: client.name });
+      setIsClientManagerOpen(false); 
+      setIsShareLinkModalOpen(true);
+  };
 
   const handleExitGuestMode = () => { if(confirm("確定要登出嗎？")) { setIsGuestMode(false); setGuestData(null); setViewMode('landing'); window.history.replaceState(null, '', window.location.pathname); } };
   
@@ -1385,7 +1409,7 @@ const App = () => {
       return (
           <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
               <Loader className="animate-spin text-blue-600 mb-4" size={48} />
-              <h2 className="text-xl font-bold text-slate-800">正在讀取資料...</h2>
+              <h2 className="text-xl font-bold text-slate-800">正在讀取最新雲端資產狀態...</h2>
           </div>
       );
   }
@@ -1398,7 +1422,7 @@ const App = () => {
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-10">
       {isGuestMode && (
           <div className="bg-blue-600 text-white px-4 py-2 text-sm flex justify-between items-center sticky top-0 z-50 shadow-md">
-              <div className="flex items-center gap-2"><Eye size={14} /><span className="font-bold">訪客檢視：{activeClient.name}</span></div>
+              <div className="flex items-center gap-2"><Eye size={14} /><span className="font-bold">投資人資產看板（唯讀）：{activeClient.name}</span></div>
               <button onClick={handleExitGuestMode} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 transition"><X size={12}/> 登出</button>
           </div>
       )}
@@ -1414,7 +1438,7 @@ const App = () => {
                     <div className="bg-white p-1.5 rounded shadow-sm text-blue-600"><User size={16} /></div>
                     <select value={activeClientId} onChange={(e) => setActiveClientId(e.target.value)} className="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer appearance-none pr-6 min-w-[120px]">{clients.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>
                     <ChevronDown size={14} className="absolute right-2 text-slate-400 pointer-events-none"/>
-                    <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="分享給投資人"><Share2 size={16} /></button>
+                    <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="生成最新動態連結"><Share2 size={16} /></button>
                     <button onClick={() => setIsClientManagerOpen(true)} className="ml-1 text-slate-400 hover:text-blue-600"><Edit3 size={14} /></button>
                 </div>
               )}
