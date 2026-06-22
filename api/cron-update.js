@@ -9,9 +9,7 @@ async function fetchPrice(ticker) {
     try {
         const cleanTicker = ticker.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
         let fetchTicker = cleanTicker;
-        if (/^\d[A-Za-z0-9]{3}$/.test(cleanTicker)) {
-            fetchTicker = `${cleanTicker}.T`; 
-        }
+        if (/^\d[A-Za-z0-9]{3}$/.test(cleanTicker)) fetchTicker = `${cleanTicker}.T`; 
         const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
         const data = await res.json();
         return data.chart.result[0].meta.regularMarketPrice;
@@ -29,14 +27,34 @@ const getDynamicKoLevel = (pos, targetDate) => {
     return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0));
 };
 
-const checkIsObservationDay = (pos, targetDate) => {
-    if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return true;
+// 🌟 新增：精準計算下一次觀察日 (含假日順延與手動覆蓋)
+const getNextObsDateStr = (pos, targetDate) => {
+    if (pos.manualNextObsDate) return pos.manualNextObsDate;
+    if (!pos.koObservationStartDate) return null;
+    if (pos.koType === 'Daily') {
+        const start = new Date(pos.koObservationStartDate);
+        return targetDate >= start ? targetDate.toISOString().split('T')[0] : pos.koObservationStartDate;
+    }
+
     const start = new Date(pos.koObservationStartDate);
     const targetDD = start.getDate();
-    let expectedThisMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDD);
-    if (expectedThisMonth.getDay() === 6) expectedThisMonth.setDate(expectedThisMonth.getDate() + 2);
-    else if (expectedThisMonth.getDay() === 0) expectedThisMonth.setDate(expectedThisMonth.getDate() + 1);
-    return targetDate.toDateString() === expectedThisMonth.toDateString();
+    let candidate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDD);
+    
+    // 遇到六日，自動順延至週一
+    if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
+    else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
+
+    const targetStr = targetDate.toISOString().split('T')[0];
+    const candidateStr = candidate.toISOString().split('T')[0];
+
+    // 如果本月的觀察日已經過了，就計算下個月的觀察日
+    if (candidateStr < targetStr) {
+        let nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, targetDD);
+        if (nextMonth.getDay() === 6) nextMonth.setDate(nextMonth.getDate() + 2);
+        else if (nextMonth.getDay() === 0) nextMonth.setDate(nextMonth.getDate() + 1);
+        return nextMonth.toISOString().split('T')[0];
+    }
+    return candidateStr;
 };
 
 async function sendLineMessage(message) {
@@ -52,19 +70,18 @@ async function sendLineMessage(message) {
 
 export default async function handler(req, res) {
     if (req.query.test === 'true') {
-        await sendLineMessage("🤖 【系統測試】您好！這是來自 FCN 監控系統的測試訊息，代表您的 LINE 警報功能已成功開通！");
-        return res.status(200).json({ success: true, message: "測試訊息已成功發射！請檢查您的手機 LINE 訊息。" });
+        await sendLineMessage("🤖 【系統測試】FCN 監控系統測試警報！");
+        return res.status(200).json({ success: true, message: "測試成功" });
     }
 
     try {
         const dbKey = process.env.DB_NAMESPACE || 'fcn-portfolio-data';
         const data = await redis.get(dbKey);
-        if (!data || !data.positions) return res.status(200).json({ message: '目前無資料' });
+        if (!data || !data.positions) return res.status(200).json({ message: '無資料' });
 
         const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
         
-        // 🌟 核心修正 1：評價基準日往前推一天 (T-1)
-        // 早上 7 點排程時，使用的是「昨天」的美國收盤價與觀察日
+        // 排程基準：往前推一天 (T-1)，對齊美國收盤與正確觀察日
         const evalDate = new Date(today);
         evalDate.setDate(evalDate.getDate() - 1);
         const evalDateStr = evalDate.toISOString().split('T')[0];
@@ -79,49 +96,45 @@ export default async function handler(req, res) {
         }
 
         const updatedPositions = data.positions.map(pos => {
-            const isObsDay = checkIsObservationDay(pos, evalDate);
+            const nextObsStr = getNextObsDateStr(pos, evalDate);
+            const isObsDay = (evalDateStr === nextObsStr);
             const currentKoLevel = getDynamicKoLevel(pos, evalDate);
             
-            // 🌟 核心修正 2：改為「整個產品組合」一起判斷 (Worst-of Basket 邏輯)
-            let allMeetKo = true;
-            let worstPerf = 9999;
-            let worstTicker = '';
-
-            pos.underlyings.forEach(u => {
+            let anyNewKO = false;
+            
+            // 🌟 核心修正：獨立判定每一檔標的 (記憶式 KO)
+            const newUnderlyings = pos.underlyings.map(u => {
+                if (u.memoryKO) return u; // 已經 KO 過的就保留
                 const curPrice = updatedPrices[u.ticker] || u.entryPrice;
                 const targetKoPrice = u.entryPrice * (currentKoLevel / 100);
                 
-                const perf = curPrice / u.entryPrice;
-                if (perf < worstPerf) {
-                    worstPerf = perf;
-                    worstTicker = u.ticker;
+                if (isObsDay && curPrice >= targetKoPrice && pos.koObservationStartDate && evalDateStr >= pos.koObservationStartDate) {
+                    anyNewKO = true;
+                    return { ...u, memoryKO: true };
                 }
-
-                if (curPrice < targetKoPrice) {
-                    allMeetKo = false; // 只要有一檔沒達標，整個產品就不能 KO
-                }
+                return u;
             });
 
-            // 檢查是否尚未被標記過 KO
-            const alreadyKnockedOut = pos.underlyings.every(u => u.memoryKO);
-
-            if (allMeetKo && !alreadyKnockedOut && isObsDay && pos.koObservationStartDate && evalDateStr >= pos.koObservationStartDate) {
+            if (anyNewKO) {
+                const isFullyKO = newUnderlyings.every(u => u.memoryKO);
                 const clientName = data.clients.find(c => c.id === pos.clientId)?.name || '未知客戶';
                 
-                koAlerts.push(
-                    `🔔 FCN 提前出場 (KO) 通知\n` +
-                    `客戶：${clientName}\n` +
-                    `產品：${pos.productName}\n` +
-                    `最差標的：${worstTicker} (${(worstPerf * 100).toFixed(2)}%)\n` +
-                    `當月門檻：${currentKoLevel}%`
-                );
-                
-                // 產品確定 KO，將組合內所有標的一併打上標記
-                const newUnderlyings = pos.underlyings.map(u => ({ ...u, memoryKO: true }));
-                return { ...pos, underlyings: newUnderlyings };
+                if (isFullyKO) {
+                    koAlerts.push(`🎉 FCN 提早結算 (全數 KO)！\n客戶：${clientName}\n產品：${pos.productName}\n狀態：組合內所有標的皆已觸價。`);
+                } else {
+                    const newlyKod = newUnderlyings.filter((u, i) => u.memoryKO && !pos.underlyings[i].memoryKO).map(u => u.ticker).join(', ');
+                    koAlerts.push(`🔔 FCN 個股觸價紀錄\n客戶：${clientName}\n產品：${pos.productName}\n本次達標：${newlyKod}\n當月門檻：${currentKoLevel}%`);
+                }
+            }
+
+            let updatedPos = { ...pos, underlyings: newUnderlyings };
+            
+            // 如果手動觀察日已經過了，自動清空，讓系統算下個月
+            if (pos.manualNextObsDate && evalDateStr >= pos.manualNextObsDate) {
+                updatedPos.manualNextObsDate = "";
             }
             
-            return pos;
+            return updatedPos;
         });
 
         data.marketPrices = updatedPrices;
@@ -130,11 +143,11 @@ export default async function handler(req, res) {
         await redis.set(dbKey, data);
 
         if (koAlerts.length > 0) {
-            await sendLineMessage(`【FCN 結算警報】\n今日共有 ${koAlerts.length} 筆組合達成 KO 出場條件：\n\n` + koAlerts.join('\n---\n'));
+            await sendLineMessage(`【FCN 觸價總結報】\n今日共有 ${koAlerts.length} 筆達標紀錄：\n\n` + koAlerts.join('\n---\n'));
         }
 
         return res.status(200).json({ success: true, updatedPricesCount: successCount, koAlertsSent: koAlerts.length });
     } catch (error) {
-        return res.status(500).json({ error: '伺服器執行失敗', details: error.message });
+        return res.status(500).json({ error: '執行失敗', details: error.message });
     }
 }

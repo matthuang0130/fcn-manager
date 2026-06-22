@@ -15,7 +15,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Acti
  * 9. Layout Fix: Prevent alphanumeric & large numbers from clashing when zoomed.
  * 10. Typography Fix: Restored comfortable font sizes (removed over-shrunk text-[10px]).
  * 11. Grid Alignment Fix: Restored stable grid-cols-5/6 to fix mobile wrapping & misalignment issues.
- * 12. Logic Fix: Implemented Basket "Worst-of" KO logic (All assets must meet barrier to KO).
+ * 12. Logic Fix: Independent Memory KO + Manual Next Observation Date Override + Dynamic KO% Display.
  */
 
 // --- 1. Constants ---
@@ -918,13 +918,41 @@ const App = () => {
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
 
-  // 🌟 將取得報價的方法移出，供多個 useEffect 共用
   const getPriceForTicker = (ticker) => {
     const cleanTarget = normalizeTicker(ticker);
     if (marketPrices[ticker] !== undefined) return marketPrices[ticker];
     const foundKey = Object.keys(marketPrices).find(k => normalizeTicker(k) === cleanTarget);
     if (foundKey) return marketPrices[foundKey];
     return undefined;
+  };
+
+  const getNextObsDateStr = (pos, targetDate) => {
+      if (pos.manualNextObsDate) return pos.manualNextObsDate;
+      if (!pos.koObservationStartDate) return "未設定";
+
+      if (pos.koType === 'Daily') {
+          const start = new Date(pos.koObservationStartDate);
+          return targetDate >= start ? targetDate.toISOString().split('T')[0] : pos.koObservationStartDate;
+      }
+
+      const start = new Date(pos.koObservationStartDate);
+      const targetDD = start.getDate();
+      let candidate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDD);
+
+      if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
+      else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
+
+      const targetStr = targetDate.toISOString().split('T')[0];
+      const candidateStr = candidate.toISOString().split('T')[0];
+
+      if (candidateStr < targetStr) {
+          let nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, targetDD);
+          if (nextMonth.getDay() === 6) nextMonth.setDate(nextMonth.getDate() + 2);
+          else if (nextMonth.getDay() === 0) nextMonth.setDate(nextMonth.getDate() + 1);
+          return nextMonth.toISOString().split('T')[0];
+      }
+
+      return candidateStr;
   };
 
   useEffect(() => {
@@ -1065,54 +1093,40 @@ const App = () => {
       return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); 
   };
 
-  const checkIsObservationDay = (pos, todayDate) => {
-      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return true; 
-      const start = new Date(pos.koObservationStartDate);
-      const targetDD = start.getDate();
-      let expectedThisMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), targetDD);
-      
-      if (expectedThisMonth.getDay() === 6) {
-          expectedThisMonth.setDate(expectedThisMonth.getDate() + 2); 
-      } else if (expectedThisMonth.getDay() === 0) {
-          expectedThisMonth.setDate(expectedThisMonth.getDate() + 1); 
-      }
-
-      return todayDate.getFullYear() === expectedThisMonth.getFullYear() && 
-             todayDate.getMonth() === expectedThisMonth.getMonth() && 
-             todayDate.getDate() === expectedThisMonth.getDate();
-  };
-
-  // 🌟 核心修正 3：前端視覺同步改為「全組合判定 (Worst-of Basket)」
+  // 🌟 核心修正：前端自動判定改為獨立記憶式
   useEffect(() => {
       const todayStr = new Date().toISOString().split('T')[0];
       const todayDate = new Date(todayStr);
       let hasUpdates = false;
       
       const updatedPositions = allPositions.map(pos => {
+          let posUpdated = false;
           const currentDynamicKoLevel = getDynamicKoLevel(pos, todayDate);
-          const isObservationDay = checkIsObservationDay(pos, todayDate);
+          const nextObsStr = getNextObsDateStr(pos, todayDate);
+          const isObsDay = (todayStr === nextObsStr);
 
-          let allMeetKo = true;
-          
-          pos.underlyings.forEach(u => {
+          const newUnderlyings = pos.underlyings.map(u => {
+              if (u.memoryKO) return u; // 已觸價就保留
               const marketPrice = getPriceForTicker(u.ticker);
               const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
               const currentKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
               
-              if (currentPrice < currentKoPrice) {
-                  allMeetKo = false; // 只要有一檔沒過門檻，整個組合就不算 KO
+              if (isObsDay && currentPrice >= currentKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate) {
+                  posUpdated = true;
+                  hasUpdates = true;
+                  return { ...u, memoryKO: true }; // 獨立標記
               }
+              return u;
           });
 
-          const alreadyKnockedOut = pos.underlyings.every(u => u.memoryKO);
-
-          if (allMeetKo && !alreadyKnockedOut && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate && isObservationDay) {
-              hasUpdates = true;
-              // 組合達成條件，將所有標的標記為已觸價 (打勾)
-              const newUnderlyings = pos.underlyings.map(u => ({ ...u, memoryKO: true }));
-              return { ...pos, underlyings: newUnderlyings };
+          if (posUpdated) {
+              let finalPos = { ...pos, underlyings: newUnderlyings };
+              // 如果手動觀察日過期，自動清除
+              if (pos.manualNextObsDate && todayStr >= pos.manualNextObsDate) {
+                  finalPos.manualNextObsDate = "";
+              }
+              return finalPos;
           }
-          
           return pos;
       });
 
@@ -1132,6 +1146,15 @@ const App = () => {
                   )
               };
           }));
+      });
+  };
+
+  const handleOverrideObsDate = (id, currentStr) => {
+      checkAuth(() => {
+          const val = prompt("✏️ 請設定下一次觀察日 (格式: YYYY-MM-DD)\n若要恢復系統自動計算，請清空內容並按確認。", currentStr);
+          if (val !== null) {
+              setAllPositions(prev => prev.map(p => p.id === id ? { ...p, manualNextObsDate: val.trim() } : p));
+          }
       });
   };
 
@@ -1335,7 +1358,8 @@ const App = () => {
           productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, 
           koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, 
           strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate,
-          koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0
+          koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0,
+          manualNextObsDate: pos.manualNextObsDate || ""
       }); 
       setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); 
       setIsAddModalOpen(true); 
@@ -1405,7 +1429,6 @@ const App = () => {
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
                <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
 
-               {/* ★ 隱藏訪客的更新報價按鈕 */}
                {!isGuestMode && (
                    <>
                     <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -1501,7 +1524,7 @@ const App = () => {
                   <tr className="text-sm text-slate-600 font-bold">
                     <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
                     <th className="px-4 py-3 text-center w-44">本金 / 月息</th>
-                    <th className="px-4 py-3">連結標的情況</th>
+                    <th className="px-4 py-3 min-w-[480px]">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-20">操作</th>
                   </tr>
                 </thead>
@@ -1510,6 +1533,9 @@ const App = () => {
                   {processedPositions.map((pos) => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
                       const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
+                      
+                      // 計算這筆單的下次觀察日
+                      const nextObsStr = getNextObsDateStr(pos, new Date());
 
                       return (
                         <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
@@ -1525,16 +1551,24 @@ const App = () => {
                                      <span className="bg-slate-100 px-2 py-0.5 rounded text-xs md:text-sm text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
                                      <span className="bg-blue-50 px-2 py-0.5 rounded text-xs md:text-sm text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
                                  </div>
-                                 <div className="flex flex-wrap gap-2 mt-1 md:mt-0 text-xs md:text-sm font-bold items-center">
-                                     <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100 flex gap-1">
-                                         KO {pos.currentDynamicKoLevel}% 
-                                         {pos.koType === 'Monthly' && <span className="opacity-60 font-medium">(逐月-{pos.stepDownRate}%)</span>}
-                                     </span>
-                                     <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
-                                     <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
-                                 </div>
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
+                            
+                            {/* 🌟 核心修正：新增下次觀察日與手動修改按鈕 */}
+                            <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400">
+                                <div className="flex items-center justify-between gap-1 w-full max-w-[200px]">
+                                    <span className="flex items-center gap-1"><Clock size={12}/> {pos.maturityDate} 到期</span>
+                                    {pos.koType === 'Monthly' && (
+                                        <div 
+                                            onClick={() => handleOverrideObsDate(pos.id, nextObsStr)}
+                                            className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition" 
+                                            title="點擊手動修改下次觀察日"
+                                        >
+                                            <span className="font-bold">下次: {nextObsStr}</span>
+                                            {!isGuestMode && <Pencil size={10} />}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                           </td>
                           
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto bg-slate-50/50 md:bg-transparent"> 
@@ -1558,16 +1592,15 @@ const App = () => {
                             </div>
                           </td>
 
-                          {/* 🌟 核心修正：強制撐開寬度，保護內部的等分網格不被擠壓 */}
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto md:min-w-[520px]"> 
                             <div className="flex flex-col gap-1 w-full"> 
                               <span className="md:hidden text-sm font-bold text-slate-500 mb-1">連結標的情況</span>
                               
-                              {/* 🌟 完美修復：恢復最穩定、確保手機不會斷行的 5 等分 / 6 等分網格 */}
                               <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
-                                  <span className="text-right text-red-600">KO</span>
+                                  {/* 🌟 核心修正：動態顯示目前 KO 門檻 % */}
+                                  <span className="text-right text-red-600">KO ({pos.currentDynamicKoLevel}%)</span>
                                   <span className="text-right text-slate-500">履約</span>
                                   <span className="text-right text-green-600">KI</span>
                               </div>
