@@ -1,23 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
-/**
- * FCN 投資組合管理系統 (Cloud Database Version)
- * Fixes:
- * 1. Replaced all localStorage logic with Vercel KV via /api/storage
- * 2. Added isInitializing state for cloud data fetching
- * 3. Added debounced auto-save to cloud
- * 4. Added cache-busting (?t=Date.now() & cache: 'no-store')
- * 5. UI Upgrade: Stable Responsive Cards. 
- * 6. Native URL Shortener: Uses /api/share KV storage.
- * 7. Feature: Step-down FCN support with 0-month logic and Weekend Holiday Delay.
- * 8. Security: Hidden "Sync Live Prices" button from Guest view to prevent false intraday KO panics.
- * 9. Layout Fix: Prevent alphanumeric & large numbers from clashing when zoomed.
- * 10. Typography Fix: Restored comfortable font sizes (removed over-shrunk text-[10px]).
- * 11. Grid Alignment Fix: Restored stable grid-cols-5/6 to fix mobile wrapping & misalignment issues.
- * 12. Logic Fix: Independent Memory KO + Manual Next Observation Date Override + Dynamic KO% Display.
- */
-
 // --- 1. Constants ---
 
 const DEFAULT_CLIENTS = [{ id: 'c1', name: '預設投資人' }];
@@ -926,6 +909,27 @@ const App = () => {
     return undefined;
   };
 
+  // 🌟 修正：跨越觀察日即刻降階邏輯 (完全使用字串與數字比對，無時差問題)
+  const getDynamicKoLevel = (pos, targetDateObj) => {
+      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
+      
+      const year = targetDateObj.getFullYear();
+      const month = targetDateObj.getMonth() + 1;
+      const day = targetDateObj.getDate();
+      const targetStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      
+      if (targetStr <= pos.koObservationStartDate) return pos.koLevel;
+
+      const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
+      let stepDowns = (year - startYear) * 12 + (month - startMonth);
+      
+      if (day > startDay) {
+          stepDowns++;
+      }
+      
+      return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
+  };
+
   const getNextObsDateStr = (pos, targetDate) => {
       if (pos.manualNextObsDate) return pos.manualNextObsDate;
       if (!pos.koObservationStartDate) return "未設定";
@@ -1084,16 +1088,6 @@ const App = () => {
       }
   };
 
-  const getDynamicKoLevel = (pos, targetDateObj) => {
-      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
-      const start = new Date(pos.koObservationStartDate);
-      let monthsPassed = (targetDateObj.getFullYear() - start.getFullYear()) * 12 + (targetDateObj.getMonth() - start.getMonth());
-      if (targetDateObj.getDate() < start.getDate()) monthsPassed--;
-      if (monthsPassed <= 0) return pos.koLevel; 
-      return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); 
-  };
-
-  // 🌟 核心修正：前端自動判定改為獨立記憶式
   useEffect(() => {
       const todayStr = new Date().toISOString().split('T')[0];
       const todayDate = new Date(todayStr);
@@ -1106,7 +1100,7 @@ const App = () => {
           const isObsDay = (todayStr === nextObsStr);
 
           const newUnderlyings = pos.underlyings.map(u => {
-              if (u.memoryKO) return u; // 已觸價就保留
+              if (u.memoryKO) return u; 
               const marketPrice = getPriceForTicker(u.ticker);
               const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
               const currentKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
@@ -1114,14 +1108,13 @@ const App = () => {
               if (isObsDay && currentPrice >= currentKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate) {
                   posUpdated = true;
                   hasUpdates = true;
-                  return { ...u, memoryKO: true }; // 獨立標記
+                  return { ...u, memoryKO: true }; 
               }
               return u;
           });
 
           if (posUpdated) {
               let finalPos = { ...pos, underlyings: newUnderlyings };
-              // 如果手動觀察日過期，自動清除
               if (pos.manualNextObsDate && todayStr >= pos.manualNextObsDate) {
                   finalPos.manualNextObsDate = "";
               }
@@ -1534,7 +1527,6 @@ const App = () => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
                       const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
                       
-                      // 計算這筆單的下次觀察日
                       const nextObsStr = getNextObsDateStr(pos, new Date());
 
                       return (
@@ -1553,7 +1545,6 @@ const App = () => {
                                  </div>
                             </div>
                             
-                            {/* 🌟 核心修正：新增下次觀察日與手動修改按鈕 */}
                             <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400">
                                 <div className="flex items-center justify-between gap-1 w-full max-w-[200px]">
                                     <span className="flex items-center gap-1"><Clock size={12}/> {pos.maturityDate} 到期</span>
@@ -1599,7 +1590,6 @@ const App = () => {
                               <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
-                                  {/* 🌟 核心修正：動態顯示目前 KO 門檻 % */}
                                   <span className="text-right text-red-600">KO ({pos.currentDynamicKoLevel}%)</span>
                                   <span className="text-right text-slate-500">履約</span>
                                   <span className="text-right text-green-600">KI</span>

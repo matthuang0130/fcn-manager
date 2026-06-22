@@ -18,16 +18,30 @@ async function fetchPrice(ticker) {
     }
 }
 
-const getDynamicKoLevel = (pos, targetDate) => {
+// 🌟 修正：跨越觀察日即刻降階邏輯 (避免時差問題)
+const getDynamicKoLevel = (pos, targetDateObj) => {
     if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
-    const start = new Date(pos.koObservationStartDate);
-    let monthsPassed = (targetDate.getFullYear() - start.getFullYear()) * 12 + (targetDate.getMonth() - start.getMonth());
-    if (targetDate.getDate() < start.getDate()) monthsPassed--;
-    if (monthsPassed <= 0) return pos.koLevel;
-    return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0));
+    
+    const year = targetDateObj.getFullYear();
+    const month = targetDateObj.getMonth() + 1;
+    const day = targetDateObj.getDate();
+    const targetStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    
+    // 1. 在第一次觀察日(含)之前，絕對不降，維持首期 KO
+    if (targetStr <= pos.koObservationStartDate) return pos.koLevel;
+
+    // 2. 開始計算降階次數
+    const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
+    let stepDowns = (year - startYear) * 12 + (month - startMonth);
+    
+    // 如果今天的日期數字「大於」起始日的日期數字，代表本月的觀察點已過，進入下一個遞減週期
+    if (day > startDay) {
+        stepDowns++;
+    }
+    
+    return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
 };
 
-// 🌟 新增：精準計算下一次觀察日 (含假日順延與手動覆蓋)
 const getNextObsDateStr = (pos, targetDate) => {
     if (pos.manualNextObsDate) return pos.manualNextObsDate;
     if (!pos.koObservationStartDate) return null;
@@ -40,14 +54,12 @@ const getNextObsDateStr = (pos, targetDate) => {
     const targetDD = start.getDate();
     let candidate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDD);
     
-    // 遇到六日，自動順延至週一
     if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
     else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
 
     const targetStr = targetDate.toISOString().split('T')[0];
     const candidateStr = candidate.toISOString().split('T')[0];
 
-    // 如果本月的觀察日已經過了，就計算下個月的觀察日
     if (candidateStr < targetStr) {
         let nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, targetDD);
         if (nextMonth.getDay() === 6) nextMonth.setDate(nextMonth.getDate() + 2);
@@ -80,8 +92,6 @@ export default async function handler(req, res) {
         if (!data || !data.positions) return res.status(200).json({ message: '無資料' });
 
         const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-        
-        // 排程基準：往前推一天 (T-1)，對齊美國收盤與正確觀察日
         const evalDate = new Date(today);
         evalDate.setDate(evalDate.getDate() - 1);
         const evalDateStr = evalDate.toISOString().split('T')[0];
@@ -102,9 +112,8 @@ export default async function handler(req, res) {
             
             let anyNewKO = false;
             
-            // 🌟 核心修正：獨立判定每一檔標的 (記憶式 KO)
             const newUnderlyings = pos.underlyings.map(u => {
-                if (u.memoryKO) return u; // 已經 KO 過的就保留
+                if (u.memoryKO) return u; 
                 const curPrice = updatedPrices[u.ticker] || u.entryPrice;
                 const targetKoPrice = u.entryPrice * (currentKoLevel / 100);
                 
@@ -129,7 +138,6 @@ export default async function handler(req, res) {
 
             let updatedPos = { ...pos, underlyings: newUnderlyings };
             
-            // 如果手動觀察日已經過了，自動清空，讓系統算下個月
             if (pos.manualNextObsDate && evalDateStr >= pos.manualNextObsDate) {
                 updatedPos.manualNextObsDate = "";
             }
