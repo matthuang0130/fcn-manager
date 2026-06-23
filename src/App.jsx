@@ -654,7 +654,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const handleCopy = () => {
       const success = copyToClipboard(link);
       if(success) { setCopyStatus("已複製！"); setTimeout(() => setCopyStatus("複製連結"), 2000); }
-      else prompt("請手動複製：", link);
+      else prompt("請手手動複製：", link);
   };
 
   if(!isOpen) return null;
@@ -1107,8 +1107,9 @@ const App = () => {
   };
 
   useEffect(() => {
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      // 🌟 修正：獲取安全的本地端今天字串，解決 Date 導致的 Crash 白畫面
+      const todayObj = new Date();
+      const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
       let hasUpdates = false;
       
       const updatedPositions = allPositions.map(pos => {
@@ -1196,9 +1197,10 @@ const App = () => {
     let laggard = null; let minPerf = 99999;
     const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
     
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const currentDynamicKoLevel = getDynamicKoLevel(pos, todayStr);
+    // 🌟 修正：計算當下要渲染的安全字串
+    const todayRenderObj = new Date();
+    const todayRenderStr = `${todayRenderObj.getFullYear()}-${String(todayRenderObj.getMonth() + 1).padStart(2, '0')}-${String(todayRenderObj.getDate()).padStart(2, '0')}`;
+    const currentDynamicKoLevel = getDynamicKoLevel(pos, todayRenderStr);
 
     const underlyingDetails = (pos.underlyings || []).map(u => {
       const marketPrice = getPriceForTicker(u.ticker);
@@ -1527,7 +1529,10 @@ const App = () => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
                       const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
                       
-                      const nextObsStr = getNextObsDateStr(pos, new Date());
+                      // 🌟 修正：確保每一行渲染都能讀取到安全的字串
+                      const todayRenderObj = new Date();
+                      const todayRenderStr = `${todayRenderObj.getFullYear()}-${String(todayRenderObj.getMonth() + 1).padStart(2, '0')}-${String(todayRenderObj.getDate()).padStart(2, '0')}`;
+                      const nextObsStr = getNextObsDateStr(pos, todayRenderStr);
 
                       return (
                         <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
