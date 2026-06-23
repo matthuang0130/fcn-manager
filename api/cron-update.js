@@ -18,53 +18,46 @@ async function fetchPrice(ticker) {
     }
 }
 
-// 🌟 修正：跨越觀察日即刻降階邏輯 (避免時差問題)
-const getDynamicKoLevel = (pos, targetDateObj) => {
+// 🌟 純字串比對，徹底消除時差問題
+const getDynamicKoLevel = (pos, targetDateStr) => {
     if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
-    
-    const year = targetDateObj.getFullYear();
-    const month = targetDateObj.getMonth() + 1;
-    const day = targetDateObj.getDate();
-    const targetStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    
-    // 1. 在第一次觀察日(含)之前，絕對不降，維持首期 KO
-    if (targetStr <= pos.koObservationStartDate) return pos.koLevel;
+    if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
 
-    // 2. 開始計算降階次數
     const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
+    const [year, month, day] = targetDateStr.split('-').map(Number);
+
     let stepDowns = (year - startYear) * 12 + (month - startMonth);
-    
-    // 如果今天的日期數字「大於」起始日的日期數字，代表本月的觀察點已過，進入下一個遞減週期
-    if (day > startDay) {
-        stepDowns++;
-    }
+    if (day > startDay) stepDowns++;
     
     return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
 };
 
-const getNextObsDateStr = (pos, targetDate) => {
+const getNextObsDateStr = (pos, targetDateStr) => {
     if (pos.manualNextObsDate) return pos.manualNextObsDate;
-    if (!pos.koObservationStartDate) return null;
-    if (pos.koType === 'Daily') {
-        const start = new Date(pos.koObservationStartDate);
-        return targetDate >= start ? targetDate.toISOString().split('T')[0] : pos.koObservationStartDate;
+    
+    // 天天觀察：如果沒設起始日就是每天；有設就看是否過了起始日
+    if (pos.koType !== 'Monthly') {
+        if (!pos.koObservationStartDate) return targetDateStr;
+        return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
     }
 
-    const start = new Date(pos.koObservationStartDate);
-    const targetDD = start.getDate();
-    let candidate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDD);
-    
+    if (!pos.koObservationStartDate) return "未設定";
+
+    const [sYear, sMonth, sDay] = pos.koObservationStartDate.split('-').map(Number);
+    const [tYear, tMonth, tDay] = targetDateStr.split('-').map(Number);
+
+    let candidate = new Date(tYear, tMonth - 1, sDay);
     if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
     else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
 
-    const targetStr = targetDate.toISOString().split('T')[0];
-    const candidateStr = candidate.toISOString().split('T')[0];
+    const toYYYYMMDD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let candidateStr = toYYYYMMDD(candidate);
 
-    if (candidateStr < targetStr) {
-        let nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, targetDD);
+    if (candidateStr < targetDateStr) {
+        let nextMonth = new Date(tYear, tMonth, sDay);
         if (nextMonth.getDay() === 6) nextMonth.setDate(nextMonth.getDate() + 2);
         else if (nextMonth.getDay() === 0) nextMonth.setDate(nextMonth.getDate() + 1);
-        return nextMonth.toISOString().split('T')[0];
+        return toYYYYMMDD(nextMonth);
     }
     return candidateStr;
 };
@@ -94,7 +87,7 @@ export default async function handler(req, res) {
         const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
         const evalDate = new Date(today);
         evalDate.setDate(evalDate.getDate() - 1);
-        const evalDateStr = evalDate.toISOString().split('T')[0];
+        const evalDateStr = `${evalDate.getFullYear()}-${String(evalDate.getMonth()+1).padStart(2, '0')}-${String(evalDate.getDate()).padStart(2, '0')}`;
 
         let koAlerts = [];
         let successCount = 0;
@@ -106,9 +99,10 @@ export default async function handler(req, res) {
         }
 
         const updatedPositions = data.positions.map(pos => {
-            const nextObsStr = getNextObsDateStr(pos, evalDate);
+            const nextObsStr = getNextObsDateStr(pos, evalDateStr);
             const isObsDay = (evalDateStr === nextObsStr);
-            const currentKoLevel = getDynamicKoLevel(pos, evalDate);
+            const currentKoLevel = getDynamicKoLevel(pos, evalDateStr);
+            const hasStarted = !pos.koObservationStartDate || evalDateStr >= pos.koObservationStartDate;
             
             let anyNewKO = false;
             
@@ -117,7 +111,7 @@ export default async function handler(req, res) {
                 const curPrice = updatedPrices[u.ticker] || u.entryPrice;
                 const targetKoPrice = u.entryPrice * (currentKoLevel / 100);
                 
-                if (isObsDay && curPrice >= targetKoPrice && pos.koObservationStartDate && evalDateStr >= pos.koObservationStartDate) {
+                if (isObsDay && curPrice >= targetKoPrice && hasStarted) {
                     anyNewKO = true;
                     return { ...u, memoryKO: true };
                 }
@@ -137,11 +131,9 @@ export default async function handler(req, res) {
             }
 
             let updatedPos = { ...pos, underlyings: newUnderlyings };
-            
             if (pos.manualNextObsDate && evalDateStr >= pos.manualNextObsDate) {
                 updatedPos.manualNextObsDate = "";
             }
-            
             return updatedPos;
         });
 

@@ -1,24 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
-/**
- * FCN 投資組合管理系統 (Cloud Database Version)
- * Fixes:
- * 1. Replaced all localStorage logic with Vercel KV via /api/storage
- * 2. Added isInitializing state for cloud data fetching
- * 3. Added debounced auto-save to cloud
- * 4. Added cache-busting (?t=Date.now() & cache: 'no-store')
- * 5. UI Upgrade: Stable Responsive Cards. 
- * 6. Native URL Shortener: Uses /api/share KV storage.
- * 7. Feature: Step-down FCN support with 0-month logic and Weekend Holiday Delay.
- * 8. Security: Hidden "Sync Live Prices" button from Guest view to prevent false intraday KO panics.
- * 9. Layout Fix: Prevent alphanumeric & large numbers from clashing when zoomed.
- * 10. Typography Fix: Restored comfortable font sizes (removed over-shrunk text-[10px]).
- * 11. Grid Alignment Fix: Restored stable grid-cols-5/6 to fix mobile wrapping & misalignment issues.
- * 12. Logic Fix: Independent Memory KO + Manual Next Observation Date Override + Dynamic KO% Display.
- * 13. Dynamic View Upgrade: Real-time dynamic client connection view (#c=...) replacing static snapshots.
- */
-
 // --- 1. Constants ---
 
 const DEFAULT_CLIENTS = [{ id: 'c1', name: '預設投資人' }];
@@ -927,50 +909,44 @@ const App = () => {
     return undefined;
   };
 
-  const getDynamicKoLevel = (pos, targetDateObj) => {
+  const getDynamicKoLevel = (pos, targetDateStr) => {
       if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
-      
-      const year = targetDateObj.getFullYear();
-      const month = targetDateObj.getMonth() + 1;
-      const day = targetDateObj.getDate();
-      const targetStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      
-      if (targetStr <= pos.koObservationStartDate) return pos.koLevel;
+      if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
 
       const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
+      const [year, month, day] = targetDateStr.split('-').map(Number);
+
       let stepDowns = (year - startYear) * 12 + (month - startMonth);
-      
-      if (day > startDay) {
-          stepDowns++;
-      }
+      if (day > startDay) stepDowns++;
       
       return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
   };
 
-  const getNextObsDateStr = (pos, targetDate) => {
+  const getNextObsDateStr = (pos, targetDateStr) => {
       if (pos.manualNextObsDate) return pos.manualNextObsDate;
-      if (!pos.koObservationStartDate) return "未設定";
-
-      if (pos.koType === 'Daily') {
-          const start = new Date(pos.koObservationStartDate);
-          return targetDate >= start ? targetDate.toISOString().split('T')[0] : pos.koObservationStartDate;
+      
+      if (pos.koType !== 'Monthly') {
+          if (!pos.koObservationStartDate) return targetDateStr;
+          return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
       }
 
-      const start = new Date(pos.koObservationStartDate);
-      const targetDD = start.getDate();
-      let candidate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDD);
+      if (!pos.koObservationStartDate) return "未設定";
 
+      const [sYear, sMonth, sDay] = pos.koObservationStartDate.split('-').map(Number);
+      const [tYear, tMonth, tDay] = targetDateStr.split('-').map(Number);
+
+      let candidate = new Date(tYear, tMonth - 1, sDay);
       if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
       else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
 
-      const targetStr = targetDate.toISOString().split('T')[0];
-      const candidateStr = candidate.toISOString().split('T')[0];
+      const toYYYYMMDD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      let candidateStr = toYYYYMMDD(candidate);
 
-      if (candidateStr < targetStr) {
-          let nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, targetDD);
+      if (candidateStr < targetDateStr) {
+          let nextMonth = new Date(tYear, tMonth, sDay);
           if (nextMonth.getDay() === 6) nextMonth.setDate(nextMonth.getDate() + 2);
           else if (nextMonth.getDay() === 0) nextMonth.setDate(nextMonth.getDate() + 1);
-          return nextMonth.toISOString().split('T')[0];
+          return toYYYYMMDD(nextMonth);
       }
 
       return candidateStr;
@@ -1008,7 +984,6 @@ const App = () => {
 
     const hash = window.location.hash;
     
-    // 🌟 升級修正：支援全新的「即時連動型」視角 (#c=客戶編號)
     if (hash && hash.startsWith('#c=')) {
         const clientId = hash.replace('#c=', '');
         const fetchClientDynamicData = async () => {
@@ -1034,7 +1009,6 @@ const App = () => {
         fetchClientDynamicData();
         return;
     }
-    // 向下相容舊版的快照型連結 (#s=)
     else if (hash && hash.startsWith('#s=')) {
         const shareId = hash.replace('#s=', '');
         const fetchShareData = async () => {
@@ -1133,15 +1107,16 @@ const App = () => {
   };
 
   useEffect(() => {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const todayDate = new Date(todayStr);
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       let hasUpdates = false;
       
       const updatedPositions = allPositions.map(pos => {
           let posUpdated = false;
-          const currentDynamicKoLevel = getDynamicKoLevel(pos, todayDate);
-          const nextObsStr = getNextObsDateStr(pos, todayDate);
+          const currentDynamicKoLevel = getDynamicKoLevel(pos, todayStr);
+          const nextObsStr = getNextObsDateStr(pos, todayStr);
           const isObsDay = (todayStr === nextObsStr);
+          const hasStarted = !pos.koObservationStartDate || todayStr >= pos.koObservationStartDate;
 
           const newUnderlyings = pos.underlyings.map(u => {
               if (u.memoryKO) return u; 
@@ -1149,7 +1124,7 @@ const App = () => {
               const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
               const currentKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
               
-              if (isObsDay && currentPrice >= currentKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate) {
+              if (isObsDay && currentPrice >= currentKoPrice && hasStarted) {
                   posUpdated = true;
                   hasUpdates = true;
                   return { ...u, memoryKO: true }; 
@@ -1220,7 +1195,10 @@ const App = () => {
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
     const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
-    const currentDynamicKoLevel = getDynamicKoLevel(pos, new Date());
+    
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const currentDynamicKoLevel = getDynamicKoLevel(pos, todayStr);
 
     const underlyingDetails = (pos.underlyings || []).map(u => {
       const marketPrice = getPriceForTicker(u.ticker);
@@ -1346,12 +1324,10 @@ const App = () => {
   const handleAddClient = (name) => { checkAuth(() => { if (name) { const newId = `c${Date.now()}`; setClients(prev => [...prev, { id: newId, name }]); setActiveClientId(newId); } }); };
   const handleDeleteClient = (id) => { checkAuth(() => { if (clients.length <= 1) return alert("至少需保留一位"); if (confirm("確定刪除？")) { setClients(prev => prev.filter(c => c.id !== id)); setAllPositions(prev => prev.filter(p => p.clientId !== id)); if (activeClientId === id) setActiveClientId(clients[0].id); } }); };
 
-  // 🌟 核心修正：大幅改造分享連結邏輯，直接串接 #c 專屬動態視角，免等待、免存快照
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
       
-      // 直接使用客戶識別代碼組合，達成「後台更新、前台立刻同步」的活看板
       const baseUrl = window.location.href.split(/[?#]/)[0];
       const liveUrl = `${baseUrl}#c=${clientId}`;
       
