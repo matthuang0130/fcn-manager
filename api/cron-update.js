@@ -5,20 +5,42 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+// 🚀 將雙引擎抓價技術移植到排程系統中
 async function fetchPrice(ticker) {
     try {
         const cleanTicker = ticker.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
-        let fetchTicker = cleanTicker;
-        if (/^\d[A-Za-z0-9]{3}$/.test(cleanTicker)) fetchTicker = `${cleanTicker}.T`; 
-        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
-        const data = await res.json();
-        return data.chart.result[0].meta.regularMarketPrice;
+        const isJP = /^\d[A-Za-z0-9]{3}$/.test(cleanTicker);
+
+        let finalPrice = null;
+
+        if (isJP) {
+            try {
+                const gfRes = await fetch(`https://www.google.com/finance/quote/${cleanTicker}:TYO`, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                });
+                const html = await gfRes.text();
+                const match = html.match(/class="YMlKec fxKbKc"[^>]*>[¥$]?([\d,.]+)/);
+                if (match && match[1]) {
+                    finalPrice = parseFloat(match[1].replace(/,/g, ''));
+                }
+            } catch (e) {}
+        }
+
+        if (finalPrice === null) {
+            let fetchTicker = cleanTicker;
+            if (isJP) fetchTicker = `${cleanTicker}.T`; 
+            const yfRes = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
+            const data = await yfRes.json();
+            if (data.chart && data.chart.result) {
+                finalPrice = data.chart.result[0].meta.regularMarketPrice;
+            }
+        }
+        return finalPrice;
     } catch (e) {
         return null;
     }
 }
 
-// 🌟 純字串比對，徹底消除時差問題
 const getDynamicKoLevel = (pos, targetDateStr) => {
     if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
     if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
@@ -35,7 +57,6 @@ const getDynamicKoLevel = (pos, targetDateStr) => {
 const getNextObsDateStr = (pos, targetDateStr) => {
     if (pos.manualNextObsDate) return pos.manualNextObsDate;
     
-    // 天天觀察：如果沒設起始日就是每天；有設就看是否過了起始日
     if (pos.koType !== 'Monthly') {
         if (!pos.koObservationStartDate) return targetDateStr;
         return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
@@ -59,6 +80,7 @@ const getNextObsDateStr = (pos, targetDateStr) => {
         else if (nextMonth.getDay() === 0) nextMonth.setDate(nextMonth.getDate() + 1);
         return toYYYYMMDD(nextMonth);
     }
+
     return candidateStr;
 };
 
@@ -92,8 +114,11 @@ export default async function handler(req, res) {
         let koAlerts = [];
         let successCount = 0;
         const updatedPrices = { ...data.marketPrices };
+        const lockedTickers = data.lockedTickers || []; 
 
         for (const ticker of Object.keys(updatedPrices)) {
+            if (lockedTickers.includes(ticker)) continue;
+
             const price = await fetchPrice(ticker);
             if (price) { updatedPrices[ticker] = price; successCount++; }
         }

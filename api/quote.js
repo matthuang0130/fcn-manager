@@ -1,40 +1,59 @@
 export default async function handler(req, res) {
     const { ticker } = req.query;
-    
+
     if (!ticker) {
-        return res.status(400).json({ error: '缺少標的代碼參數' });
+        return res.status(400).json({ error: 'Missing ticker' });
     }
 
     try {
-        const cleanTicker = ticker.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
-        let fetchTicker = cleanTicker;
+        // 1. 清理與標準化代碼
+        const cleanTicker = ticker.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
+        const isJP = /^\d[A-Za-z0-9]{3}$/.test(cleanTicker); // 判斷是否為 4 碼日股
 
-        // 🌟 升級版日股雷達：只要是 4 個字元且開頭是數字 (如 7203 或 285A)，就自動補 .T
-        if (/^\d[A-Za-z0-9]{3}$/.test(cleanTicker)) {
-            fetchTicker = `${cleanTicker}.T`;
+        let finalPrice = null;
+
+        // 🚀 雙引擎策略 A：針對日股，優先強制爬取 Google Finance (最準確、零延遲)
+        if (isJP) {
+            try {
+                const gfUrl = `https://www.google.com/finance/quote/${cleanTicker}:TYO`;
+                const gfRes = await fetch(gfUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                });
+                const html = await gfRes.text();
+                
+                // 使用正則表達式精準抓取 Google 財經網頁中的大字體報價
+                const match = html.match(/class="YMlKec fxKbKc"[^>]*>[¥$]?([\d,.]+)/);
+                if (match && match[1]) {
+                    finalPrice = parseFloat(match[1].replace(/,/g, ''));
+                }
+            } catch (e) {
+                console.log(`Google Finance 抓取 ${cleanTicker} 失敗，準備降級備用方案`);
+            }
         }
 
-        const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
-        
-        if (!response.ok) {
-            throw new Error('Yahoo Finance API 發生錯誤');
-        }
-        
-        const data = await response.json();
-        
-        if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
-            throw new Error('找不到該標的報價');
-        }
-        
-        const price = data.chart.result[0].meta.regularMarketPrice;
+        // 🚀 雙引擎策略 B：美股，或 Google 財經失敗時的 Yahoo API 備用方案
+        if (finalPrice === null) {
+            let fetchTicker = cleanTicker;
+            if (isJP) fetchTicker = `${cleanTicker}.T`; 
 
-        if (price !== undefined && price !== null) {
-            return res.status(200).json({ price });
+            const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`;
+            const yfRes = await fetch(yfUrl);
+            const data = await yfRes.json();
+            
+            if (data.chart && data.chart.result && data.chart.result[0].meta.regularMarketPrice) {
+                finalPrice = data.chart.result[0].meta.regularMarketPrice;
+            }
+        }
+
+        // 回傳最終結果
+        if (finalPrice !== null) {
+            return res.status(200).json({ price: finalPrice });
         } else {
-            throw new Error('回傳資料中沒有價格');
+            return res.status(404).json({ error: '查無報價' });
         }
+
     } catch (error) {
-        console.error(`抓取 ${ticker} 報價失敗:`, error);
-        return res.status(500).json({ error: '無法取得報價' });
+        console.error(`Quote API 錯誤 (${ticker}):`, error);
+        return res.status(500).json({ error: '報價伺服器錯誤' });
     }
 }
