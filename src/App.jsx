@@ -1,19 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
-/**
- * FCN 投資組合管理系統 (Cloud Database Version)
- * Fixes:
- * 1. Replaced all localStorage logic with Vercel KV via /api/storage
- * 2. Added isInitializing state for cloud data fetching
- * 3. Added debounced auto-save to cloud
- * 4. Added cache-busting (?t=Date.now() & cache: 'no-store')
- * 5. UI Upgrade: Stable Responsive Cards. 
- * 6. Native URL Shortener: Uses /api/share KV storage.
- * 7. Feature: Step-down FCN support with 0-month logic and Weekend Holiday Delay.
- * 8. Security: Hidden "Sync Live Prices" button from Guest view to prevent false intraday KO panics.
- */
-
 // --- 1. Constants ---
 
 const DEFAULT_CLIENTS = [{ id: 'c1', name: '預設投資人' }];
@@ -191,7 +178,7 @@ const parsePortfolioRows = (rows) => {
     }
 
     if (headerIdx === -1) {
-         throw new Error(`找不到「產品名稱」欄位。\n\n請確認 Google Sheet 中包含「產品」或「名稱」欄位。\n(偵測到的第一列: ${rows[0] ? rows[0].join(',') : '空'})`);
+        throw new Error(`找不到「產品名稱」欄位。\n\n請確認 Google Sheet 中包含「產品」或「名稱」欄位。\n(偵測到的第一列: ${rows[0] ? rows[0].join(',') : '空'})`);
     }
 
     const newClientsMap = new Map();
@@ -307,13 +294,13 @@ const LandingPage = ({ onAdminLogin, hasPassword }) => {
                 </div>
                 <form onSubmit={(e)=>{e.preventDefault(); onAdminLogin(password);}} className="space-y-4">
                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">管理員登入</label>
+                        <label className="text-sm font-bold text-slate-500 uppercase tracking-wide">管理員登入</label>
                         <input type="password" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition" placeholder={hasPassword ? "請輸入密碼" : "尚未設定密碼 (直接登入)"} value={password} onChange={e=>setPassword(e.target.value)}/>
                     </div>
                     <button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3.5 rounded-lg font-bold shadow-md transition transform active:scale-95">登入系統</button>
                 </form>
                 <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-                    <p className="text-xs text-slate-400">投資人請直接點擊您收到的專屬連結進入。</p>
+                    <p className="text-sm text-slate-400">投資人請直接點擊您收到的專屬連結進入。</p>
                 </div>
             </div>
         </div>
@@ -324,10 +311,10 @@ const PasswordInput = ({ onConfirm, onCancel, btnText }) => {
     const [val, setVal] = useState("");
     return (
         <form onSubmit={(e) => { e.preventDefault(); if(val) onConfirm(val); }} className="space-y-3">
-            <input type="password" autoFocus className="w-full border rounded px-3 py-2" placeholder="密碼" value={val} onChange={e=>setVal(e.target.value)} />
+            <input type="password" autoFocus className="w-full border rounded px-3 py-2 text-sm" placeholder="密碼" value={val} onChange={e=>setVal(e.target.value)} />
             <div className="flex gap-2">
-                {onCancel && <button type="button" onClick={onCancel} className="flex-1 bg-slate-100 py-2 rounded">取消</button>}
-                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded font-bold">{btnText}</button>
+                {onCancel && <button type="button" onClick={onCancel} className="flex-1 bg-slate-100 py-2 rounded text-sm">取消</button>}
+                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded font-bold text-sm">{btnText}</button>
             </div>
         </form>
     );
@@ -377,23 +364,23 @@ const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIs
                 <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800">安全性設定</h3><button onClick={onClose}><X size={20}/></button></div>
                 
                 <div className="mb-6 border-b border-slate-100 pb-4">
-                    <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase">管理員密碼</h4>
+                    <h4 className="text-sm font-bold text-slate-500 mb-2 uppercase">管理員密碼</h4>
                     {savedPassword ? (
                         <div className="space-y-2"><p className="text-sm text-slate-600">目前已設定密碼。</p><button onClick={() => { if(confirm("確定移除密碼？")) { setSavedPassword(""); setIsUnlocked(true); }}} className="w-full bg-red-50 text-red-600 py-2 rounded font-bold text-sm border border-red-100">移除密碼</button></div>
                     ) : (
-                        <div className="space-y-2"><p className="text-xs text-slate-500 mb-2">設定密碼後，修改資料需先解鎖。</p><PasswordInput onConfirm={(pwd) => { setSavedPassword(pwd); setIsUnlocked(false); }} btnText="設定"/></div>
+                        <div className="space-y-2"><p className="text-sm text-slate-500 mb-2">設定密碼後，修改資料需先解鎖。</p><PasswordInput onConfirm={(pwd) => { setSavedPassword(pwd); setIsUnlocked(false); }} btnText="設定"/></div>
                     )}
                 </div>
 
                 <div>
-                    <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase">系統維護</h4>
+                    <h4 className="text-sm font-bold text-slate-500 mb-2 uppercase">系統維護</h4>
                     <button 
                         onClick={handleFactoryReset} 
                         className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition"
                     >
                         <RefreshCcw size={16}/> 清空雲端資料並重置
                     </button>
-                    <p className="text-[10px] text-slate-400 mt-2 text-center">如果介面出現亂碼或錯誤，請嘗試此操作</p>
+                    <p className="text-xs text-slate-400 mt-2 text-center">如果介面出現亂碼或錯誤，請嘗試此操作</p>
                 </div>
             </div>
         </div>
@@ -448,7 +435,7 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   const handleDownload = () => {
     try {
       const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-      const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
+      const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -464,8 +451,8 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
       <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-5 mb-10">
         <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="font-bold text-slate-800">匯出資料</h3><button onClick={onClose}><X size={20} className="text-slate-400"/></button></div>
         <div className="space-y-4">
-          <p className="text-xs text-slate-500">如果下載失敗，請點擊「複製」並貼到 Excel。</p>
-          <textarea ref={textAreaRef} readOnly className="w-full h-32 border p-2 text-xs font-mono rounded bg-slate-50" value={csvContent} />
+          <p className="text-sm text-slate-500">如果下載失敗，請點擊「複製」並貼到 Excel。</p>
+          <textarea ref={textAreaRef} readOnly className="w-full h-32 border p-2 text-sm font-mono rounded bg-slate-50" value={csvContent} />
           <div className="flex gap-3"><button onClick={handleCopy} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Copy size={16}/> {copyStatus || "複製內容"}</button><button onClick={handleDownload} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Download size={16}/> 下載 CSV</button></div>
         </div>
       </div>
@@ -562,8 +549,8 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
         
         {!pendingSyncData && (
             <div className="flex gap-2 mb-4 bg-slate-100 p-1 rounded-lg shrink-0">
-                <button onClick={()=>setActiveTab('market')} className={`flex-1 py-2 text-xs rounded-md transition ${activeTab==='market'?'bg-white text-blue-600 font-bold shadow-sm':'text-slate-500'}`}>1. 市場報價</button>
-                <button onClick={()=>setActiveTab('portfolio')} className={`flex-1 py-2 text-xs rounded-md transition ${activeTab==='portfolio'?'bg-white text-purple-600 font-bold shadow-sm':'text-slate-500'}`}>2. 匯入投資組合</button>
+                <button onClick={()=>setActiveTab('market')} className={`flex-1 py-2 text-sm rounded-md transition ${activeTab==='market'?'bg-white text-blue-600 font-bold shadow-sm':'text-slate-500'}`}>1. 市場報價</button>
+                <button onClick={()=>setActiveTab('portfolio')} className={`flex-1 py-2 text-sm rounded-md transition ${activeTab==='portfolio'?'bg-white text-purple-600 font-bold shadow-sm':'text-slate-500'}`}>2. 匯入投資組合</button>
             </div>
         )}
 
@@ -579,11 +566,11 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                     <div className="grid grid-cols-2 gap-4 w-full">
                         <div className="bg-slate-50 p-3 rounded-lg text-center border border-slate-200">
                             <span className="block text-2xl font-bold text-slate-800">{pendingSyncData.positions.length}</span>
-                            <span className="text-xs text-slate-500">筆部位資料</span>
+                            <span className="text-sm text-slate-500">筆部位資料</span>
                         </div>
                         <div className="bg-slate-50 p-3 rounded-lg text-center border border-slate-200">
                             <span className="block text-2xl font-bold text-slate-800">{pendingSyncData.clients.length}</span>
-                            <span className="text-xs text-slate-500">位投資人</span>
+                            <span className="text-sm text-slate-500">位投資人</span>
                         </div>
                     </div>
 
@@ -598,27 +585,27 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                 </div>
             ) : activeTab === 'market' ? (
                 <div className="space-y-4">
-                     <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 space-y-1">
+                     <div className="bg-blue-50 p-3 rounded text-sm text-blue-800 space-y-1">
                         <p className="font-bold">自動同步設定：</p>
                         <p>輸入 Google Sheet 發布的 CSV 或網頁(HTML) 連結，即可在主畫面一鍵更新股價。</p>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500">Google Sheet 連結 (CSV/HTML)</label>
-                        <input className="w-full border p-2 text-xs rounded" placeholder="https://docs.google.com/.../pub?output=csv" value={inputUrl} onChange={e=>setInputUrl(e.target.value)}/>
+                        <label className="text-sm font-bold text-slate-500">Google Sheet 連結 (CSV/HTML)</label>
+                        <input className="w-full border p-2 text-sm rounded" placeholder="https://docs.google.com/.../pub?output=csv" value={inputUrl} onChange={e=>setInputUrl(e.target.value)}/>
                         <button onClick={handleSaveMarketId} className="w-full bg-blue-600 text-white py-2 rounded text-sm font-bold">儲存設定</button>
-                        {googleSheetId && <p className="text-xs text-green-600 flex items-center gap-1"><Check size={12}/> 已連結 ID: {googleSheetId.substring(0,8)}...</p>}
+                        {googleSheetId && <p className="text-sm text-green-600 flex items-center gap-1"><Check size={14}/> 已連結 ID: {googleSheetId.substring(0,8)}...</p>}
                     </div>
                     <hr className="border-slate-100"/>
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500">或直接貼上 (代碼 價格)</label>
-                        <textarea className="w-full h-24 border p-2 text-xs font-mono rounded" placeholder="NVDA 800&#10;7203 3500" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/>
+                        <label className="text-sm font-bold text-slate-500">或直接貼上 (代碼 價格)</label>
+                        <textarea className="w-full h-24 border p-2 text-sm font-mono rounded" placeholder="NVDA 800&#10;7203 3500" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/>
                         <button onClick={handlePasteMarket} className="w-full bg-slate-600 text-white py-2 rounded text-sm">手動更新</button>
                     </div>
                 </div>
             ) : (
                 <div className="space-y-4">
-                    <div className="bg-purple-50 p-3 rounded text-xs text-purple-800 space-y-2">
-                        <p className="font-bold flex items-center gap-1"><Database size={12}/> 如何運作？</p>
+                    <div className="bg-purple-50 p-3 rounded text-sm text-purple-800 space-y-2">
+                        <p className="font-bold flex items-center gap-1"><Database size={14}/> 如何運作？</p>
                         <p>您可以在 Google Sheet 上管理所有投資部位，然後在此處貼上連結匯入。</p>
                         <p className="font-bold">支援格式：</p>
                         <ul className="list-disc list-inside opacity-80 pl-2">
@@ -629,9 +616,9 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                     </div>
                     
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500">Google Sheet 連結 (CSV/HTML)</label>
+                        <label className="text-sm font-bold text-slate-500">Google Sheet 連結 (CSV/HTML)</label>
                         <input 
-                            className="w-full border p-2 text-xs rounded focus:ring-2 focus:ring-purple-500 outline-none" 
+                            className="w-full border p-2 text-sm rounded focus:ring-2 focus:ring-purple-500 outline-none" 
                             placeholder="https://docs.google.com/.../pubhtml" 
                             value={portfolioSheetUrl} 
                             onChange={e=>setPortfolioSheetUrl(e.target.value)}
@@ -647,14 +634,14 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                         {isSyncing ? '同步中...' : '開始匯入'}
                     </button>
                     
-                    <div className="text-[10px] text-slate-400 text-center">
+                    <div className="text-xs text-slate-400 text-center">
                         注意：匯入將會覆蓋此裝置上現有的所有部位資料。
                     </div>
                 </div>
             )}
         </div>
         
-        {status && !pendingSyncData && <div className="mt-4 p-2 bg-slate-800 text-white text-xs rounded text-center animate-in fade-in whitespace-pre-wrap">{status}</div>}
+        {status && !pendingSyncData && <div className="mt-4 p-2 bg-slate-800 text-white text-sm rounded text-center animate-in fade-in whitespace-pre-wrap">{status}</div>}
       </div>
     </div>
   );
@@ -667,7 +654,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const handleCopy = () => {
       const success = copyToClipboard(link);
       if(success) { setCopyStatus("已複製！"); setTimeout(() => setCopyStatus("複製連結"), 2000); }
-      else prompt("請手動複製：", link);
+      else prompt("請手手動複製：", link);
   };
 
   if(!isOpen) return null;
@@ -684,7 +671,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
             </div>
             
             <div className="space-y-4">
-                <p className="text-xs text-slate-500 mb-3">
+                <p className="text-sm text-slate-500 mb-3">
                     將此連結傳送給客戶，對方即可在手機上查看即時部位與損益（唯讀模式）。
                 </p>
 
@@ -694,7 +681,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
                         readOnly 
                         value={link} 
                         onClick={(e) => e.target.select()}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-3 text-xs text-slate-600 break-all pr-10 focus:ring-2 focus:ring-blue-500"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-3 text-sm text-slate-600 break-all pr-10 focus:ring-2 focus:ring-blue-500"
                     />
                 </div>
 
@@ -732,7 +719,7 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
         {isGeneratingShareLink && (
             <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm animate-in fade-in">
                 <div className="animate-spin text-blue-600 mb-2"><RefreshCw size={24} /></div>
-                <span className="text-xs font-bold text-slate-600">正在產生專屬網址...</span>
+                <span className="text-sm font-bold text-slate-600">正在產生專屬網址...</span>
             </div>
         )}
 
@@ -747,7 +734,7 @@ const ClientManagerModal = ({ isOpen, onClose, clients, onAdd, onDelete, activeI
               <div className="flex items-center gap-2">
                 <User size={16} className={c.id === activeId ? "text-blue-600" : "text-slate-400"}/>
                 <span className={`text-sm ${c.id === activeId ? "font-bold text-blue-700" : "text-slate-700"}`}>{c.name}</span>
-                {c.id === activeId && <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 rounded">當前</span>}
+                {c.id === activeId && <span className="text-xs bg-blue-100 text-blue-600 px-1.5 rounded">當前</span>}
               </div>
               <div className="flex gap-1">
                   <button onClick={() => onGenerateShareLink(c.id)} className="text-slate-400 hover:text-blue-600 p-1" title="產生分享連結"><Share2 size={14}/></button>
@@ -793,17 +780,17 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
         <form onSubmit={onAdd} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="sm:col-span-2 md:col-span-4">
-              <label className="block text-xs font-medium text-slate-500 mb-1">產品名稱</label>
+              <label className="block text-sm font-medium text-slate-500 mb-1">產品名稱</label>
               <input type="text" required className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 value={newPosition.productName} onChange={e => setNewPosition({...newPosition, productName: e.target.value})} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">發行商</label>
+              <label className="block text-sm font-medium text-slate-500 mb-1">發行商</label>
               <input type="text" className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 value={newPosition.issuer} onChange={e => setNewPosition({...newPosition, issuer: e.target.value})} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">幣別</label>
+              <label className="block text-sm font-medium text-slate-500 mb-1">幣別</label>
               <select className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
                 value={newPosition.currency} onChange={e => setNewPosition({...newPosition, currency: e.target.value})}>
                 <option value="USD">USD (美元)</option>
@@ -811,25 +798,25 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">本金</label>
+              <label className="block text-sm font-medium text-slate-500 mb-1">本金</label>
               <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 value={newPosition.nominal} onChange={e => setNewPosition({...newPosition, nominal: e.target.value})} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">年息(%)</label>
+              <label className="block text-sm font-medium text-slate-500 mb-1">年息(%)</label>
               <input type="number" step="0.01" className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 value={newPosition.couponRate} onChange={e => setNewPosition({...newPosition, couponRate: e.target.value})} />
             </div>
           </div>
           
           <div className="p-3 bg-slate-50 rounded border grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-             <div><label className="text-xs font-bold text-slate-500">KI%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold text-red-600" value={newPosition.kiLevel} onChange={e=>setNewPosition({...newPosition, kiLevel:e.target.value})}/></div>
-             <div><label className="text-xs font-bold text-slate-500">Strike%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold" value={newPosition.strikeLevel} onChange={e=>setNewPosition({...newPosition, strikeLevel:e.target.value})}/></div>
-             <div><label className="text-xs font-bold text-slate-500">首期 KO%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold text-green-600" value={newPosition.koLevel} onChange={e=>setNewPosition({...newPosition, koLevel:e.target.value})}/></div>
+             <div><label className="text-sm font-bold text-slate-500">KI%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold text-red-600" value={newPosition.kiLevel} onChange={e=>setNewPosition({...newPosition, kiLevel:e.target.value})}/></div>
+             <div><label className="text-sm font-bold text-slate-500">Strike%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold" value={newPosition.strikeLevel} onChange={e=>setNewPosition({...newPosition, strikeLevel:e.target.value})}/></div>
+             <div><label className="text-sm font-bold text-slate-500">首期 KO%</label><input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold text-green-600" value={newPosition.koLevel} onChange={e=>setNewPosition({...newPosition, koLevel:e.target.value})}/></div>
              
              <div className="flex gap-2">
                  <div className="flex-1">
-                     <label className="text-xs font-bold text-slate-500">觀察頻率</label>
+                     <label className="text-sm font-bold text-slate-500">觀察頻率</label>
                      <select className="w-full border rounded px-2 py-1 text-sm font-bold text-blue-600 bg-white" value={newPosition.koType || "Daily"} onChange={e=>setNewPosition({...newPosition, koType:e.target.value})}>
                         <option value="Daily">天天觀察</option>
                         <option value="Monthly">每月觀察 (逐月遞減)</option>
@@ -837,7 +824,7 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
                  </div>
                  {newPosition.koType === 'Monthly' && (
                      <div className="w-16">
-                         <label className="text-xs font-bold text-slate-500">降幅%</label>
+                         <label className="text-sm font-bold text-slate-500">降幅%</label>
                          <input type="number" step="0.1" className="w-full border rounded px-2 py-1 text-sm font-bold bg-blue-50 text-blue-700" value={newPosition.stepDownRate !== undefined ? newPosition.stepDownRate : 5} onChange={e=>setNewPosition({...newPosition, stepDownRate:e.target.value})}/>
                      </div>
                  )}
@@ -845,13 +832,13 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-             <div><label className="text-xs text-slate-500">KO 觀察(起)日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.koObservationStartDate} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/></div>
-             <div><label className="text-xs text-slate-500">到期日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.maturityDate} onChange={e=>setNewPosition({...newPosition, maturityDate:e.target.value})}/></div>
-             <div><label className="text-xs text-slate-500">存續期</label><input type="text" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.tenor} onChange={e=>setNewPosition({...newPosition, tenor:e.target.value})}/></div>
+             <div><label className="text-sm text-slate-500">KO 觀察(起)日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.koObservationStartDate} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/></div>
+             <div><label className="text-sm text-slate-500">到期日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.maturityDate} onChange={e=>setNewPosition({...newPosition, maturityDate:e.target.value})}/></div>
+             <div><label className="text-sm text-slate-500">存續期</label><input type="text" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.tenor} onChange={e=>setNewPosition({...newPosition, tenor:e.target.value})}/></div>
           </div>
 
           <div>
-            <div className="flex justify-between mb-2"><label className="text-sm font-bold">連結標的</label><button type="button" onClick={addU} className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded">+ 新增</button></div>
+            <div className="flex justify-between mb-2"><label className="text-sm font-bold">連結標的</label><button type="button" onClick={addU} className="text-sm bg-blue-50 text-blue-600 px-2 py-1 rounded">+ 新增</button></div>
             {tempUnderlyings.map(u => (
               <div key={u.id} className="flex gap-2 mb-2">
                 <input type="text" placeholder="代碼" className="w-1/2 border rounded px-2 py-1 text-sm uppercase" value={u.ticker} onChange={e=>updateU(u.id, 'ticker', e.target.value)}/>
@@ -868,6 +855,12 @@ const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPosition,
       </div>
     </div>
   );
+};
+
+const normalizeTicker = (ticker) => {
+  if (!ticker) return "";
+  let normalized = toHalfWidth(ticker.toString()).toUpperCase();
+  return normalized.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
 };
 
 const App = () => {
@@ -908,6 +901,57 @@ const App = () => {
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
 
+  const getPriceForTicker = (ticker) => {
+    const cleanTarget = normalizeTicker(ticker);
+    if (marketPrices[ticker] !== undefined) return marketPrices[ticker];
+    const foundKey = Object.keys(marketPrices).find(k => normalizeTicker(k) === cleanTarget);
+    if (foundKey) return marketPrices[foundKey];
+    return undefined;
+  };
+
+  const getDynamicKoLevel = (pos, targetDateStr) => {
+      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
+      if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
+
+      const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
+      const [year, month, day] = targetDateStr.split('-').map(Number);
+
+      let stepDowns = (year - startYear) * 12 + (month - startMonth);
+      if (day > startDay) stepDowns++;
+      
+      return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
+  };
+
+  const getNextObsDateStr = (pos, targetDateStr) => {
+      if (pos.manualNextObsDate) return pos.manualNextObsDate;
+      
+      if (pos.koType !== 'Monthly') {
+          if (!pos.koObservationStartDate) return targetDateStr;
+          return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
+      }
+
+      if (!pos.koObservationStartDate) return "未設定";
+
+      const [sYear, sMonth, sDay] = pos.koObservationStartDate.split('-').map(Number);
+      const [tYear, tMonth, tDay] = targetDateStr.split('-').map(Number);
+
+      let candidate = new Date(tYear, tMonth - 1, sDay);
+      if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
+      else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
+
+      const toYYYYMMDD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      let candidateStr = toYYYYMMDD(candidate);
+
+      if (candidateStr < targetDateStr) {
+          let nextMonth = new Date(tYear, tMonth, sDay);
+          if (nextMonth.getDay() === 6) nextMonth.setDate(nextMonth.getDate() + 2);
+          else if (nextMonth.getDay() === 0) nextMonth.setDate(nextMonth.getDate() + 1);
+          return toYYYYMMDD(nextMonth);
+      }
+
+      return candidateStr;
+  };
+
   useEffect(() => {
     const loadCloudData = async () => {
       try {
@@ -940,7 +984,32 @@ const App = () => {
 
     const hash = window.location.hash;
     
-    if (hash && hash.startsWith('#s=')) {
+    if (hash && hash.startsWith('#c=')) {
+        const clientId = hash.replace('#c=', '');
+        const fetchClientDynamicData = async () => {
+            try {
+                const res = await fetch(`/api/client-view?cid=${clientId}&t=${Date.now()}`, { cache: 'no-store' });
+                if (!res.ok) throw new Error('無法讀取');
+                const decoded = await res.json();
+                setGuestData(decoded); 
+                setIsGuestMode(true);
+                if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); 
+                if (decoded.prices) setMarketPrices(decoded.prices);
+                if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
+                setViewMode('dashboard');
+                window.history.replaceState(null, '', window.location.pathname);
+            } catch (e) {
+                console.error("Dynamic share load error", e);
+                alert("此專屬連結已失效、投資人已被移除或雲端連線失敗。");
+            } finally {
+                setIsInitializing(false);
+                setIsDataLoaded(false); 
+            }
+        };
+        fetchClientDynamicData();
+        return;
+    }
+    else if (hash && hash.startsWith('#s=')) {
         const shareId = hash.replace('#s=', '');
         const fetchShareData = async () => {
             try {
@@ -956,7 +1025,7 @@ const App = () => {
                 window.history.replaceState(null, '', window.location.pathname);
             } catch (e) {
                 console.error("Share load error", e);
-                alert("此連結已失效或過期");
+                alert("此連結已過期或失效。");
             } finally {
                 setIsInitializing(false);
                 setIsDataLoaded(false); 
@@ -1037,62 +1106,39 @@ const App = () => {
       }
   };
 
-  const getDynamicKoLevel = (pos, targetDateObj) => {
-      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
-      const start = new Date(pos.koObservationStartDate);
-      let monthsPassed = (targetDateObj.getFullYear() - start.getFullYear()) * 12 + (targetDateObj.getMonth() - start.getMonth());
-      if (targetDateObj.getDate() < start.getDate()) monthsPassed--;
-      if (monthsPassed <= 0) return pos.koLevel; 
-      return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0)); 
-  };
-
-  const checkIsObservationDay = (pos, todayDate) => {
-      if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return true; 
-      const start = new Date(pos.koObservationStartDate);
-      const targetDD = start.getDate();
-      let expectedThisMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), targetDD);
-      
-      if (expectedThisMonth.getDay() === 6) {
-          expectedThisMonth.setDate(expectedThisMonth.getDate() + 2); 
-      } else if (expectedThisMonth.getDay() === 0) {
-          expectedThisMonth.setDate(expectedThisMonth.getDate() + 1); 
-      }
-
-      return todayDate.getFullYear() === expectedThisMonth.getFullYear() && 
-             todayDate.getMonth() === expectedThisMonth.getMonth() && 
-             todayDate.getDate() === expectedThisMonth.getDate();
-  };
-
   useEffect(() => {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const todayDate = new Date(todayStr);
+      // 🌟 修正：獲取安全的本地端今天字串，解決 Date 導致的 Crash 白畫面
+      const todayObj = new Date();
+      const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
       let hasUpdates = false;
       
       const updatedPositions = allPositions.map(pos => {
           let posUpdated = false;
-          const currentDynamicKoLevel = getDynamicKoLevel(pos, todayDate);
-          const isObservationDay = checkIsObservationDay(pos, todayDate);
+          const currentDynamicKoLevel = getDynamicKoLevel(pos, todayStr);
+          const nextObsStr = getNextObsDateStr(pos, todayStr);
+          const isObsDay = (todayStr === nextObsStr);
+          const hasStarted = !pos.koObservationStartDate || todayStr >= pos.koObservationStartDate;
 
           const newUnderlyings = pos.underlyings.map(u => {
-              const currentPrice = (() => {
-                   const cleanTicker = u.ticker.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
-                   if (marketPrices[u.ticker] !== undefined) return marketPrices[u.ticker];
-                   const foundKey = Object.keys(marketPrices).find(k => k.toString().toUpperCase().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim() === cleanTicker);
-                   return foundKey ? marketPrices[foundKey] : u.entryPrice;
-              })();
-
+              if (u.memoryKO) return u; 
+              const marketPrice = getPriceForTicker(u.ticker);
+              const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
               const currentKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
               
-              if (!u.memoryKO && currentPrice >= currentKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate && isObservationDay) {
+              if (isObsDay && currentPrice >= currentKoPrice && hasStarted) {
                   posUpdated = true;
                   hasUpdates = true;
-                  return { ...u, memoryKO: true };
+                  return { ...u, memoryKO: true }; 
               }
               return u;
           });
 
           if (posUpdated) {
-              return { ...pos, underlyings: newUnderlyings };
+              let finalPos = { ...pos, underlyings: newUnderlyings };
+              if (pos.manualNextObsDate && todayStr >= pos.manualNextObsDate) {
+                  finalPos.manualNextObsDate = "";
+              }
+              return finalPos;
           }
           return pos;
       });
@@ -1113,6 +1159,15 @@ const App = () => {
                   )
               };
           }));
+      });
+  };
+
+  const handleOverrideObsDate = (id, currentStr) => {
+      checkAuth(() => {
+          const val = prompt("✏️ 請設定下一次觀察日 (格式: YYYY-MM-DD)\n若要恢復系統自動計算，請清空內容並按確認。", currentStr);
+          if (val !== null) {
+              setAllPositions(prev => prev.map(p => p.id === id ? { ...p, manualNextObsDate: val.trim() } : p));
+          }
       });
   };
 
@@ -1138,24 +1193,14 @@ const App = () => {
   const handleAdminLogin = (inputPwd) => { if (!savedPassword || inputPwd === savedPassword) { setIsUnlocked(true); setIsGuestMode(false); setViewMode('dashboard'); return true; } else { alert("密碼錯誤"); return false; } };
   const handleManualLock = () => { if(savedPassword) setIsUnlocked(false); };
 
-  const getPriceForTicker = (ticker) => {
-    const cleanTarget = normalizeTicker(ticker);
-    if (marketPrices[ticker] !== undefined) return marketPrices[ticker];
-    const foundKey = Object.keys(marketPrices).find(k => normalizeTicker(k) === cleanTarget);
-    if (foundKey) return marketPrices[foundKey];
-    return undefined;
-  };
-  
-  const normalizeTicker = (ticker) => {
-    if (!ticker) return "";
-    let normalized = toHalfWidth(ticker.toString()).toUpperCase();
-    return normalized.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
-  };
-
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
     const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
-    const currentDynamicKoLevel = getDynamicKoLevel(pos, new Date());
+    
+    // 🌟 修正：計算當下要渲染的安全字串
+    const todayRenderObj = new Date();
+    const todayRenderStr = `${todayRenderObj.getFullYear()}-${String(todayRenderObj.getMonth() + 1).padStart(2, '0')}-${String(todayRenderObj.getDate()).padStart(2, '0')}`;
+    const currentDynamicKoLevel = getDynamicKoLevel(pos, todayRenderStr);
 
     const underlyingDetails = (pos.underlyings || []).map(u => {
       const marketPrice = getPriceForTicker(u.ticker);
@@ -1284,36 +1329,14 @@ const App = () => {
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
-      setIsGeneratingShareLink(true);
-      try {
-          const clientPositions = allPositions.filter(p => p.clientId === clientId);
-          const relevantPrices = {};
-          clientPositions.forEach(p => { p.underlyings.forEach(u => { const price = getPriceForTicker(u.ticker); if (price !== undefined) relevantPrices[u.ticker] = price; }); });
-          
-          const payload = { clientName: client.name, positions: clientPositions, prices: relevantPrices, lastUpdated: lastUpdated, sheetId: googleSheetId };
-          
-          const response = await fetch('/api/share', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-          });
-          
-          const data = await response.json();
-          if (!data.shareId) throw new Error("短網址產生失敗");
-
-          const baseUrl = window.location.href.split(/[?#]/)[0];
-          const shortUrl = `${baseUrl}#s=${data.shareId}`;
-          
-          setCurrentShareData({ url: shortUrl, name: client.name });
-          setIsClientManagerOpen(false); 
-          setIsShareLinkModalOpen(true);
-      } catch (e) { 
-          alert("連結生成失敗，請確認網路或 API 設定。"); 
-          console.error(e); 
-      } finally { 
-          setIsGeneratingShareLink(false); 
-      }
-    };
+      
+      const baseUrl = window.location.href.split(/[?#]/)[0];
+      const liveUrl = `${baseUrl}#c=${clientId}`;
+      
+      setCurrentShareData({ url: liveUrl, name: client.name });
+      setIsClientManagerOpen(false); 
+      setIsShareLinkModalOpen(true);
+  };
 
   const handleExitGuestMode = () => { if(confirm("確定要登出嗎？")) { setIsGuestMode(false); setGuestData(null); setViewMode('landing'); window.history.replaceState(null, '', window.location.pathname); } };
   
@@ -1330,7 +1353,8 @@ const App = () => {
           productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, 
           koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, 
           strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate,
-          koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0
+          koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0,
+          manualNextObsDate: pos.manualNextObsDate || ""
       }); 
       setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); 
       setIsAddModalOpen(true); 
@@ -1363,7 +1387,7 @@ const App = () => {
       return (
           <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
               <Loader className="animate-spin text-blue-600 mb-4" size={48} />
-              <h2 className="text-xl font-bold text-slate-800">正在讀取資料...</h2>
+              <h2 className="text-xl font-bold text-slate-800">正在讀取最新雲端資產狀態...</h2>
           </div>
       );
   }
@@ -1375,8 +1399,8 @@ const App = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-10">
       {isGuestMode && (
-          <div className="bg-blue-600 text-white px-4 py-2 text-xs flex justify-between items-center sticky top-0 z-50 shadow-md">
-              <div className="flex items-center gap-2"><Eye size={14} /><span className="font-bold">訪客檢視：{activeClient.name}</span></div>
+          <div className="bg-blue-600 text-white px-4 py-2 text-sm flex justify-between items-center sticky top-0 z-50 shadow-md">
+              <div className="flex items-center gap-2"><Eye size={14} /><span className="font-bold">投資人資產看板（唯讀）：{activeClient.name}</span></div>
               <button onClick={handleExitGuestMode} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 transition"><X size={12}/> 登出</button>
           </div>
       )}
@@ -1392,7 +1416,7 @@ const App = () => {
                     <div className="bg-white p-1.5 rounded shadow-sm text-blue-600"><User size={16} /></div>
                     <select value={activeClientId} onChange={(e) => setActiveClientId(e.target.value)} className="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer appearance-none pr-6 min-w-[120px]">{clients.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>
                     <ChevronDown size={14} className="absolute right-2 text-slate-400 pointer-events-none"/>
-                    <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="分享給投資人"><Share2 size={16} /></button>
+                    <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="生成最新動態連結"><Share2 size={16} /></button>
                     <button onClick={() => setIsClientManagerOpen(true)} className="ml-1 text-slate-400 hover:text-blue-600"><Edit3 size={14} /></button>
                 </div>
               )}
@@ -1400,7 +1424,6 @@ const App = () => {
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
                <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
 
-               {/* ★ 隱藏訪客的更新報價按鈕 */}
                {!isGuestMode && (
                    <>
                     <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -1428,17 +1451,17 @@ const App = () => {
                     <DollarSign size={48} className="text-slate-400"/>
                 </div>
                 <div className="relative z-10">
-                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">USD 資產總覽</div>
+                    <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">USD 資產總覽</div>
                     <div className="flex flex-col gap-1">
                         <div className="flex items-baseline gap-1">
                             <span className="text-2xl font-black text-slate-800">${(summary.usd.nominal/10000).toFixed(0)}</span>
                             <span className="text-sm font-bold text-slate-600">萬</span>
-                            <span className="text-[10px] text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
+                            <span className="text-xs text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
                         </div>
                         <div className="flex items-center gap-1 text-red-700 font-bold">
                              <Plus size={12} strokeWidth={4} />
                              <span className="text-lg">${summary.usd.monthly.toLocaleString()}</span>
-                             <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
+                             <span className="text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
                         </div>
                     </div>
                 </div>
@@ -1449,24 +1472,24 @@ const App = () => {
                     <Coins size={48} className="text-slate-400"/>
                 </div>
                 <div className="relative z-10">
-                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">JPY 資產總覽</div>
+                    <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">JPY 資產總覽</div>
                      <div className="flex flex-col gap-1">
                         <div className="flex items-baseline gap-1">
                             <span className="text-2xl font-black text-slate-800">¥{(summary.jpy.nominal/10000).toFixed(0)}</span>
                             <span className="text-sm font-bold text-slate-600">萬</span>
-                            <span className="text-[10px] text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
+                            <span className="text-xs text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span>
                         </div>
                         <div className="flex items-center gap-1 text-red-700 font-bold">
                              <Plus size={12} strokeWidth={4} />
                              <span className="text-lg">¥{summary.jpy.monthly.toLocaleString()}</span>
-                             <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
+                             <span className="text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.koCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">KO 機會</span>
+              <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">KO 機會</span>
               <div className="flex items-end justify-between mt-2">
                   <span className="text-3xl font-black text-red-600">{summary.koCount}</span>
                   <TrendingUp size={24} className="text-red-400 mb-1"/>
@@ -1474,7 +1497,7 @@ const App = () => {
             </div>
             
             <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.kiCount > 0 ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'}`}>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">KI 風險</span>
+              <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">KI 風險</span>
               <div className="flex items-end justify-between mt-2">
                   <span className="text-3xl font-black text-green-600">{summary.kiCount}</span>
                   <AlertTriangle size={24} className="text-green-400 mb-1"/>
@@ -1486,17 +1509,17 @@ const App = () => {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
               <div className="flex items-center gap-2"><Briefcase size={16} className="text-slate-400"/><h2 className="font-bold text-slate-700 text-sm">{activeClient.name} 的部位</h2></div>
-              <span className="text-[10px] text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
+              <span className="text-xs text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
-            <div className="w-full p-3 md:p-0">
-              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[800px]">
+            <div className="w-full p-3 md:p-0 overflow-x-auto">
+              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[950px]">
                 
                 <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
                   <tr className="text-sm text-slate-600 font-bold">
                     <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
-                    <th className="px-4 py-3 text-center w-40">本金 / 月息</th>
-                    <th className="px-4 py-3">連結標的情況</th>
+                    <th className="px-4 py-3 text-center w-44">本金 / 月息</th>
+                    <th className="px-4 py-3 min-w-[480px]">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-20">操作</th>
                   </tr>
                 </thead>
@@ -1505,47 +1528,59 @@ const App = () => {
                   {processedPositions.map((pos) => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
                       const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
+                      
+                      // 🌟 修正：確保每一行渲染都能讀取到安全的字串
+                      const todayRenderObj = new Date();
+                      const todayRenderStr = `${todayRenderObj.getFullYear()}-${String(todayRenderObj.getMonth() + 1).padStart(2, '0')}-${String(todayRenderObj.getDate()).padStart(2, '0')}`;
+                      const nextObsStr = getNextObsDateStr(pos, todayRenderStr);
 
                       return (
                         <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
                           
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
                             <div className="flex items-center gap-2 mb-2">
-                               <span className={`text-[10px] px-1.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               <div className="text-sm font-black text-slate-800 break-words md:whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
-                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
+                               <span className={`text-xs px-2 py-0.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
+                               <div className="text-sm md:text-base font-black text-slate-800 break-words md:whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
+                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col md:flex-row gap-1.5 md:gap-3">
                                  <div className="flex flex-wrap gap-2 items-center">
-                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
-                                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
-                                 </div>
-                                 <div className="flex flex-wrap gap-2 mt-1 md:mt-0 text-[11px] font-bold items-center">
-                                     <span className="px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100 flex gap-1">
-                                        KO {pos.currentDynamicKoLevel}% 
-                                        {pos.koType === 'Monthly' && <span className="opacity-60 font-medium">(逐月-{pos.stepDownRate}%)</span>}
-                                     </span>
-                                     <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded border border-slate-200">履約 {pos.strikeLevel}%</span>
-                                     <span className="px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">KI {pos.kiLevel}%</span>
+                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-xs md:text-sm text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
+                                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs md:text-sm text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
                                  </div>
                             </div>
-                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2"><Clock size={12}/> {pos.maturityDate} 到期</div>
+                            
+                            <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400">
+                                <div className="flex items-center justify-between gap-1 w-full max-w-[200px]">
+                                    <span className="flex items-center gap-1"><Clock size={12}/> {pos.maturityDate} 到期</span>
+                                    {pos.koType === 'Monthly' && (
+                                        <div 
+                                            onClick={() => handleOverrideObsDate(pos.id, nextObsStr)}
+                                            className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition" 
+                                            title="點擊手動修改下次觀察日"
+                                        >
+                                            <span className="font-bold">下次: {nextObsStr}</span>
+                                            {!isGuestMode && <Pencil size={10} />}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                           </td>
                           
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto bg-slate-50/50 md:bg-transparent"> 
                             <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2 w-full">
-                                <span className="md:hidden text-xs font-bold text-slate-500">本金與月息</span>
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-28 h-auto py-2 md:py-3 px-4 md:px-2"> 
+                                <span className="md:hidden text-sm font-bold text-slate-500">本金與月息</span>
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:min-w-[120px] h-auto py-2 md:py-3 px-4 md:px-2"> 
                                     <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 md:pb-2 flex flex-col md:block"> 
-                                        <span className="text-[10px] text-slate-500 font-bold tracking-widest mb-0.5">本金</span> 
-                                        <div className="text-slate-800 font-black text-sm md:text-lg leading-tight truncate">
-                                           {formatToWan(pos.nominal)}<span className="text-xs ml-0.5">萬</span>
+                                        <span className="text-xs text-slate-500 font-bold tracking-widest mb-0.5">本金</span> 
+                                        <div className="text-slate-800 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">
+                                           {formatToWan(pos.nominal)}<span className="text-xs ml-0.5 font-bold">萬</span>
                                         </div>
                                     </div>
                                     <div className="h-6 w-px bg-slate-200 md:hidden"></div>
                                     <div className="text-right md:text-center flex-1 md:w-full md:pt-1 flex flex-col md:block">
-                                        <span className="text-[10px] text-red-600 font-bold tracking-widest mb-0.5">月息</span> 
-                                        <div className="text-red-700 font-black text-sm md:text-lg leading-tight truncate"> 
+                                        <span className="text-xs text-red-600 font-bold tracking-widest mb-0.5">月息</span> 
+                                        <div className="text-red-700 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap"> 
                                            {pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}
                                         </div>
                                     </div>
@@ -1553,16 +1588,18 @@ const App = () => {
                             </div>
                           </td>
 
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto md:min-w-[520px]"> 
                             <div className="flex flex-col gap-1 w-full"> 
-                              <span className="md:hidden text-xs font-bold text-slate-500 mb-1">連結標的情況</span>
-                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-[10px] md:text-xs text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1">
+                              <span className="md:hidden text-sm font-bold text-slate-500 mb-1">連結標的情況</span>
+                              
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
                                   <span className="col-span-2 text-left">標的</span>
                                   <span className="text-right hidden sm:block">現價</span>
-                                  <span className="text-right text-red-600">KO</span>
+                                  <span className="text-right text-red-600">KO ({pos.currentDynamicKoLevel}%)</span>
                                   <span className="text-right text-slate-500">履約</span>
                                   <span className="text-right text-green-600">KI</span>
                               </div>
+                              
                               {(pos.underlyingDetails || []).map((u) => {
                                 return (
                                   <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : 'hover:bg-slate-50'}`}>
@@ -1579,21 +1616,21 @@ const App = () => {
                                             )}
                                             {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
                                             
-                                            <span className={`font-black text-xs md:text-sm truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                            <span className={`font-black text-sm md:text-base truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
                                         </div>
-                                        <span className={`sm:hidden font-mono font-black text-[10px] ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                        <span className={`sm:hidden font-mono font-black text-xs whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             {pos.currency === 'JPY' ? '¥' : '$'}{u.currentPrice.toLocaleString()}
                                         </span>
-                                        {u.name && <span className="text-[9px] text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                        {u.name && <span className="text-xs text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
 
-                                    <span className={`hidden sm:block font-mono font-black text-right text-xs md:text-sm ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
+                                    <span className={`hidden sm:block font-mono font-black text-right text-sm md:text-base whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                         {u.currentPrice.toLocaleString()}
                                     </span>
 
-                                    <span className="font-mono font-bold text-red-700 text-right text-[10px] md:text-sm">{u.koPrice.toFixed(0)}</span>
-                                    <span className="font-mono text-slate-500 text-right text-[10px] md:text-sm">{u.strikePrice.toFixed(0)}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-[10px] md:text-sm">{u.kiPrice.toFixed(0)}</span>
+                                    <span className="font-mono font-bold text-red-700 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.koPrice).toLocaleString()}</span>
+                                    <span className="font-mono text-slate-500 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.strikePrice).toLocaleString()}</span>
+                                    <span className="font-mono font-bold text-green-700 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.kiPrice).toLocaleString()}</span>
                                   </div>
                                 );
                               })}
