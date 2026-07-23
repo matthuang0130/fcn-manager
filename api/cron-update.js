@@ -1,41 +1,107 @@
 import { Redis } from '@upstash/redis';
 
-// 初始化連接 KV 資料庫
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+// 🌟 三重交叉備援抓價引擎
 async function fetchPrice(ticker) {
     try {
         const cleanTicker = ticker.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
-        let fetchTicker = cleanTicker;
-        if (/^\d{4}$/.test(cleanTicker)) fetchTicker = `${cleanTicker}.T`; 
-        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
-        const data = await res.json();
-        return data.chart.result[0].meta.regularMarketPrice;
+        const isJP = /^\d[A-Za-z0-9]{3}$/.test(cleanTicker);
+
+        let finalPrice = null;
+
+        // 1. 日股優先
+        if (isJP) {
+            try {
+                const gfRes = await fetch(`https://www.google.com/finance/quote/${cleanTicker}:TYO`, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                });
+                const html = await gfRes.text();
+                const match = html.match(/class="YMlKec fxKbKc"[^>]*>[¥$]?([\d,.]+)/);
+                if (match && match[1]) finalPrice = parseFloat(match[1].replace(/,/g, ''));
+            } catch (e) {}
+        }
+
+        // 2. Yahoo API 主力
+        if (finalPrice === null) {
+            try {
+                let fetchTicker = cleanTicker;
+                if (isJP) fetchTicker = `${cleanTicker}.T`; 
+                const yfRes = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${fetchTicker}?interval=1d`);
+                const data = await yfRes.json();
+                if (data.chart && data.chart.result && data.chart.result[0].meta.regularMarketPrice) {
+                    finalPrice = data.chart.result[0].meta.regularMarketPrice;
+                }
+            } catch (e) {}
+        }
+
+        // 3. 美股 Google Finance 終極備援 (解決 SNDK 等分拆股問題)
+        if (finalPrice === null && !isJP) {
+            try {
+                const exchanges = ['NASDAQ', 'NYSE'];
+                for (const ex of exchanges) {
+                    const gfRes = await fetch(`https://www.google.com/finance/quote/${cleanTicker}:${ex}`, {
+                        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                    });
+                    if (gfRes.ok) {
+                        const html = await gfRes.text();
+                        const match = html.match(/class="YMlKec fxKbKc"[^>]*>[¥$]?([\d,.]+)/);
+                        if (match && match[1]) {
+                            finalPrice = parseFloat(match[1].replace(/,/g, ''));
+                            break; 
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+
+        return finalPrice;
     } catch (e) {
         return null;
     }
 }
 
-const getDynamicKoLevel = (pos, today) => {
+const getDynamicKoLevel = (pos, targetDateStr) => {
     if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
-    const start = new Date(pos.koObservationStartDate);
-    let monthsPassed = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
-    if (today.getDate() < start.getDate()) monthsPassed--;
-    if (monthsPassed <= 0) return pos.koLevel;
-    return pos.koLevel - (monthsPassed * (pos.stepDownRate || 0));
+    if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
+
+    const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
+    const [year, month, day] = targetDateStr.split('-').map(Number);
+
+    let stepDowns = (year - startYear) * 12 + (month - startMonth);
+    if (day > startDay) stepDowns++;
+    
+    return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
 };
 
-const checkIsObservationDay = (pos, today) => {
-    if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return true;
-    const start = new Date(pos.koObservationStartDate);
-    const targetDD = start.getDate();
-    let expectedThisMonth = new Date(today.getFullYear(), today.getMonth(), targetDD);
-    if (expectedThisMonth.getDay() === 6) expectedThisMonth.setDate(expectedThisMonth.getDate() + 2);
-    else if (expectedThisMonth.getDay() === 0) expectedThisMonth.setDate(expectedThisMonth.getDate() + 1);
-    return today.toDateString() === expectedThisMonth.toDateString();
+const getNextObsDateStr = (pos, targetDateStr) => {
+    if (pos.manualNextObsDate) return pos.manualNextObsDate;
+    if (pos.koType !== 'Monthly') {
+        if (!pos.koObservationStartDate) return targetDateStr;
+        return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
+    }
+    if (!pos.koObservationStartDate) return "未設定";
+
+    const [sYear, sMonth, sDay] = pos.koObservationStartDate.split('-').map(Number);
+    const [tYear, tMonth, tDay] = targetDateStr.split('-').map(Number);
+
+    let candidate = new Date(tYear, tMonth - 1, sDay);
+    if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
+    else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
+
+    const toYYYYMMDD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let candidateStr = toYYYYMMDD(candidate);
+
+    if (candidateStr < targetDateStr) {
+        let nextMonth = new Date(tYear, tMonth, sDay);
+        if (nextMonth.getDay() === 6) nextMonth.setDate(nextMonth.getDate() + 2);
+        else if (nextMonth.getDay() === 0) nextMonth.setDate(nextMonth.getDate() + 1);
+        return toYYYYMMDD(nextMonth);
+    }
+    return candidateStr;
 };
 
 async function sendLineMessage(message) {
@@ -50,43 +116,70 @@ async function sendLineMessage(message) {
 }
 
 export default async function handler(req, res) {
-    // 🚀 --- 秘密測試通道：只要網址有 ?test=true 就強制發送 LINE --- 🚀
     if (req.query.test === 'true') {
-        await sendLineMessage("🤖 【系統測試】您好！這是來自 FCN 監控系統的測試訊息，代表您的 LINE 警報功能已成功開通！系統將會在每個工作日早上 7 點為您執行自動監控。🎉");
-        return res.status(200).json({ success: true, message: "測試訊息已成功發射！請檢查您的手機 LINE 訊息。" });
+        await sendLineMessage("🤖 【系統測試】FCN 監控系統測試警報！");
+        return res.status(200).json({ success: true, message: "測試成功" });
     }
 
-    // --- 以下為正常的自動排程邏輯 ---
     try {
         const dbKey = process.env.DB_NAMESPACE || 'fcn-portfolio-data';
         const data = await redis.get(dbKey);
-        if (!data || !data.positions) return res.status(200).json({ message: '目前無資料' });
+        if (!data || !data.positions) return res.status(200).json({ message: '無資料' });
 
         const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-        const todayStr = today.toISOString().split('T')[0];
+        const evalDate = new Date(today);
+        evalDate.setDate(evalDate.getDate() - 1);
+        const evalDateStr = `${evalDate.getFullYear()}-${String(evalDate.getMonth()+1).padStart(2, '0')}-${String(evalDate.getDate()).padStart(2, '0')}`;
+
         let koAlerts = [];
         let successCount = 0;
         const updatedPrices = { ...data.marketPrices };
+        const lockedTickers = data.lockedTickers || []; 
 
         for (const ticker of Object.keys(updatedPrices)) {
+            if (lockedTickers.includes(ticker)) continue;
+
             const price = await fetchPrice(ticker);
             if (price) { updatedPrices[ticker] = price; successCount++; }
         }
 
         const updatedPositions = data.positions.map(pos => {
-            const isObsDay = checkIsObservationDay(pos, today);
-            const currentKoLevel = getDynamicKoLevel(pos, today);
+            const nextObsStr = getNextObsDateStr(pos, evalDateStr);
+            const isObsDay = (evalDateStr === nextObsStr);
+            const currentKoLevel = getDynamicKoLevel(pos, evalDateStr);
+            const hasStarted = !pos.koObservationStartDate || evalDateStr >= pos.koObservationStartDate;
+            
+            let anyNewKO = false;
+            
             const newUnderlyings = pos.underlyings.map(u => {
+                if (u.memoryKO) return u; 
                 const curPrice = updatedPrices[u.ticker] || u.entryPrice;
                 const targetKoPrice = u.entryPrice * (currentKoLevel / 100);
-                if (!u.memoryKO && isObsDay && curPrice >= targetKoPrice && pos.koObservationStartDate && todayStr >= pos.koObservationStartDate) {
-                    const clientName = data.clients.find(c => c.id === pos.clientId)?.name || '未知客戶';
-                    koAlerts.push(`🔔 KO 觸價通知\n客戶：${clientName}\n產品：${pos.productName}\n標的：${u.ticker}\n收盤價：$${curPrice.toFixed(2)}\n門檻：${currentKoLevel}% ($${targetKoPrice.toFixed(2)})`);
+                
+                if (isObsDay && curPrice >= targetKoPrice && hasStarted) {
+                    anyNewKO = true;
                     return { ...u, memoryKO: true };
                 }
                 return u;
             });
-            return { ...pos, underlyings: newUnderlyings };
+
+            if (anyNewKO) {
+                const isFullyKO = newUnderlyings.every(u => u.memoryKO);
+                const clientName = data.clients.find(c => c.id === pos.clientId)?.name || '未知客戶';
+                
+                if (isFullyKO) {
+                    koAlerts.push(`🎉 FCN 提早結算 (全數 KO)！\n客戶：${clientName}\n產品：${pos.productName}\n狀態：組合內所有標的皆已觸價。`);
+                } else {
+                    const newlyKod = newUnderlyings.filter((u, i) => u.memoryKO && !pos.underlyings[i].memoryKO).map(u => u.ticker).join(', ');
+                    koAlerts.push(`🔔 FCN 個股觸價紀錄\n客戶：${clientName}\n產品：${pos.productName}\n本次達標：${newlyKod}\n當月門檻：${currentKoLevel}%`);
+                }
+            }
+
+            let updatedPos = { ...pos, underlyings: newUnderlyings };
+            if (pos.manualNextObsDate && evalDateStr >= pos.manualNextObsDate) {
+                updatedPos.manualNextObsDate = "";
+            }
+            return updatedPos;
         });
 
         data.marketPrices = updatedPrices;
@@ -95,11 +188,11 @@ export default async function handler(req, res) {
         await redis.set(dbKey, data);
 
         if (koAlerts.length > 0) {
-            await sendLineMessage(`【FCN 結算警報】\n今日共有 ${koAlerts.length} 筆標的達成 KO 出場條件：\n\n` + koAlerts.join('\n---\n'));
+            await sendLineMessage(`【FCN 觸價總結報】\n今日共有 ${koAlerts.length} 筆達標紀錄：\n\n` + koAlerts.join('\n---\n'));
         }
 
         return res.status(200).json({ success: true, updatedPricesCount: successCount, koAlertsSent: koAlerts.length });
     } catch (error) {
-        return res.status(500).json({ error: '伺服器執行失敗', details: error.message });
+        return res.status(500).json({ error: '執行失敗', details: error.message });
     }
 }
