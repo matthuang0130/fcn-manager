@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, List, Eye, EyeOff, Coins, AlertCircle, User, Briefcase, Check, Download, Copy, FileText, Pencil, Lock, Unlock, Settings, Share2, Link as LinkIcon, LogIn, FileJson, CloudDownload, ExternalLink, Database, ArrowRightLeft, RefreshCcw, Loader } from 'lucide-react';
 
-// --- 1. Constants ---
-
 const DEFAULT_CLIENTS = [{ id: 'c1', name: '預設投資人' }];
 
 const INITIAL_POSITIONS = [
@@ -22,8 +20,6 @@ const DEFAULT_FORM_STATE = {
   strikeDate: new Date().toISOString().split('T')[0],
   koObservationStartDate: "", tenor: "6 個月", maturityDate: ""
 };
-
-// --- 2. Helpers ---
 
 const toHalfWidth = (str) => str ? str.replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, ' ') : "";
 
@@ -278,8 +274,6 @@ const parsePortfolioRows = (rows) => {
     return { clients: newClients, positions: newPositions };
 };
 
-// --- 3. Sub-Components ---
-
 const LandingPage = ({ onAdminLogin, hasPassword }) => {
     const [password, setPassword] = useState("");
     return (
@@ -348,7 +342,8 @@ const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIs
                         lastUpdated: "尚無紀錄",
                         googleSheetId: "",
                         portfolioSheetUrl: "",
-                        savedPassword: ""
+                        savedPassword: "",
+                        lockedTickers: []
                     })
                 });
                 window.location.reload();
@@ -460,7 +455,7 @@ const ExportModal = ({ isOpen, onClose, allPositions, clients, marketPrices, cal
   );
 };
 
-const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLastUpdated, googleSheetId, setGoogleSheetId, onSyncPortfolio, portfolioSheetUrl, setPortfolioSheetUrl, fetchWithFallback }) => {
+const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLastUpdated, googleSheetId, setGoogleSheetId, onSyncPortfolio, portfolioSheetUrl, setPortfolioSheetUrl, fetchWithFallback, lockedTickers, setLockedTickers }) => {
   const [activeTab, setActiveTab] = useState('market'); 
   const [pasteContent, setPasteContent] = useState('');
   const [inputUrl, setInputUrl] = useState('');
@@ -474,9 +469,42 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
   };
 
   const handlePasteMarket = () => {
-    const lines = pasteContent.split('\n'); const newPrices = { ...marketPrices }; let count = 0;
-    lines.forEach(line => { const match = line.replace(/[¥$,JPY"\s]/g, '').match(/([A-Za-z0-9.:]+)[^\d-]*([\d.,]+)/); if(match) { const t = match[1].toUpperCase().replace("TYO:","").replace("JP:","").replace(".T",""); const p = parseFloat(match[2].replace(/,/g,'')); if(!isNaN(p)) { newPrices[t] = p; count++; } } });
-    setMarketPrices(newPrices); setLastUpdated(new Date().toLocaleDateString() + " (貼上)"); setStatus(`成功更新 ${count} 筆`); setTimeout(() => setStatus(''), 2000);
+    const lines = pasteContent.split('\n'); 
+    const newPrices = { ...marketPrices }; 
+    let newLocked = [...(lockedTickers || [])];
+    let count = 0;
+    let lockCount = 0;
+    let unlockCount = 0;
+    
+    lines.forEach(line => { 
+        const cleanLine = line.replace(/[¥$,JPY"]/gi, '').trim();
+        if (!cleanLine) return;
+        
+        const parts = cleanLine.split(/\s+/);
+        if (parts.length >= 2) {
+            const t = parts[0].toUpperCase().replace("TYO:","").replace("JP:","").replace(".T",""); 
+            const valStr = parts[parts.length - 1].toLowerCase();
+            
+            if (valStr === 'auto' || valStr === '0') {
+                newLocked = newLocked.filter(k => k !== t);
+                unlockCount++;
+            } else {
+                const p = parseFloat(valStr); 
+                if (!isNaN(p) && t) { 
+                    newPrices[t] = p; 
+                    if (!newLocked.includes(t)) newLocked.push(t); 
+                    lockCount++;
+                    count++; 
+                } 
+            }
+        } 
+    });
+    
+    setMarketPrices(newPrices); 
+    setLockedTickers(newLocked);
+    setLastUpdated(new Date().toLocaleString('zh-TW') + " (手動覆蓋上鎖)"); 
+    setStatus(`✅ 成功賦價並鎖定 ${lockCount} 檔標的，解除鎖定 ${unlockCount} 檔！`); 
+    setTimeout(() => setStatus(''), 3500);
   };
   
   const handleSaveMarketId = () => { 
@@ -586,8 +614,10 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
             ) : activeTab === 'market' ? (
                 <div className="space-y-4">
                      <div className="bg-blue-50 p-3 rounded text-sm text-blue-800 space-y-1">
-                        <p className="font-bold">自動同步設定：</p>
-                        <p>輸入 Google Sheet 發布的 CSV 或網頁(HTML) 連結，即可在主畫面一鍵更新股價。</p>
+                        <p className="font-bold">自動同步與強制鎖定規則：</p>
+                        <p>1. 輸入網址可進行一鍵總同步。</p>
+                        <p>2. 下方直接貼上 <code>代碼 價格</code>（例如 <code>6525 2450</code>）可手動覆蓋並<span className="text-red-600 font-bold">強制上鎖</span>，自動更新將會安全跳過此代碼。</p>
+                        <p>3. 貼上 <code>代碼 auto</code>（例如 <code>6525 auto</code>）即可解鎖並重接回自動報價。</p>
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-bold text-slate-500">Google Sheet 連結 (CSV/HTML)</label>
@@ -597,10 +627,16 @@ const DataSyncModal = ({ isOpen, onClose, marketPrices, setMarketPrices, setLast
                     </div>
                     <hr className="border-slate-100"/>
                     <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-500">或直接貼上 (代碼 價格)</label>
-                        <textarea className="w-full h-24 border p-2 text-sm font-mono rounded" placeholder="NVDA 800&#10;7203 3500" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/>
-                        <button onClick={handlePasteMarket} className="w-full bg-slate-600 text-white py-2 rounded text-sm">手動更新</button>
+                        <label className="text-sm font-bold text-slate-500">直接貼上 (代碼 價格/auto)</label>
+                        <textarea className="w-full h-24 border p-2 text-sm font-mono rounded" placeholder="6525 2450&#10;NVDA auto" value={pasteContent} onChange={e=>setPasteContent(e.target.value)}/>
+                        <button onClick={handlePasteMarket} className="w-full bg-slate-600 text-white py-2 rounded text-sm font-bold">執行覆蓋 / 解鎖</button>
                     </div>
+                    {lockedTickers && lockedTickers.length > 0 && (
+                        <div className="text-xs bg-slate-50 p-2 rounded border border-slate-200">
+                            <span className="font-bold text-slate-600 block mb-1">🔒 目前處於手動鎖定清單（不受自動股價干擾）：</span>
+                            <div className="flex flex-wrap gap-1">{lockedTickers.map(t => <span key={t} className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-100 font-mono font-bold">{t}</span>)}</div>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="space-y-4">
@@ -654,7 +690,7 @@ const ShareLinkModal = ({ isOpen, onClose, link, clientName }) => {
   const handleCopy = () => {
       const success = copyToClipboard(link);
       if(success) { setCopyStatus("已複製！"); setTimeout(() => setCopyStatus("複製連結"), 2000); }
-      else prompt("請手手動複製：", link);
+      else prompt("請手動複製：", link);
   };
 
   if(!isOpen) return null;
@@ -868,7 +904,6 @@ const App = () => {
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestData, setGuestData] = useState(null);
 
-  // --- 狀態管理 ---
   const [isInitializing, setIsInitializing] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
@@ -882,12 +917,13 @@ const App = () => {
   const [savedPassword, setSavedPassword] = useState("");
   const [isUnlocked, setIsUnlocked] = useState(true); 
   
+  const [lockedTickers, setLockedTickers] = useState([]);
+
   const [currentShareData, setCurrentShareData] = useState({ url: '', name: '' }); 
   const [pendingAction, setPendingAction] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingShareLink, setIsGeneratingShareLink] = useState(false);
 
-  // UI States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDataSyncModalOpen, setIsDataSyncModalOpen] = useState(false); 
   const [isClientManagerOpen, setIsClientManagerOpen] = useState(false);
@@ -896,7 +932,6 @@ const App = () => {
   const [isPasswordPromptOpen, setIsPasswordPromptOpen] = useState(false);
   const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState(false); 
 
-  // Form States
   const [editId, setEditId] = useState(null);
   const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
@@ -909,15 +944,26 @@ const App = () => {
     return undefined;
   };
 
+  // 🌟 核心修正：精準推算真實觀察日
   const getDynamicKoLevel = (pos, targetDateStr) => {
       if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
       if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
 
-      const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
-      const [year, month, day] = targetDateStr.split('-').map(Number);
+      const [sYear, sMonth, sDay] = pos.koObservationStartDate.split('-').map(Number);
+      let stepDowns = 0;
 
-      let stepDowns = (year - startYear) * 12 + (month - startMonth);
-      if (day > startDay) stepDowns++;
+      for (let i = 0; i < 120; i++) { 
+          let candidate = new Date(sYear, sMonth - 1 + i, sDay);
+          if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
+          else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
+          
+          const candidateStr = `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')}`;
+          
+          if (targetDateStr <= candidateStr) {
+              stepDowns = i;
+              break;
+          }
+      }
       
       return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
   };
@@ -972,6 +1018,7 @@ const App = () => {
                 setSavedPassword(data.savedPassword);
                 setIsUnlocked(!data.savedPassword);
             }
+            if (data.lockedTickers) setLockedTickers(data.lockedTickers);
           }
         }
       } catch (err) {
@@ -983,7 +1030,6 @@ const App = () => {
     };
 
     const hash = window.location.hash;
-    
     if (hash && hash.startsWith('#c=')) {
         const clientId = hash.replace('#c=', '');
         const fetchClientDynamicData = async () => {
@@ -1000,7 +1046,7 @@ const App = () => {
                 window.history.replaceState(null, '', window.location.pathname);
             } catch (e) {
                 console.error("Dynamic share load error", e);
-                alert("此專屬連結已失效、投資人已被移除或雲端連線失敗。");
+                alert("此專屬連結已失效。");
             } finally {
                 setIsInitializing(false);
                 setIsDataLoaded(false); 
@@ -1025,7 +1071,7 @@ const App = () => {
                 window.history.replaceState(null, '', window.location.pathname);
             } catch (e) {
                 console.error("Share load error", e);
-                alert("此連結已過期或失效。");
+                alert("此連結已過期。");
             } finally {
                 setIsInitializing(false);
                 setIsDataLoaded(false); 
@@ -1033,26 +1079,6 @@ const App = () => {
         };
         fetchShareData();
         return;
-    } 
-    else if (hash && hash.startsWith('#share=')) {
-        const shareCode = hash.replace('#share=', '');
-        if(shareCode) {
-            try {
-                const decodedRaw = JSON.parse(base64UrlDecode(shareCode));
-                const decoded = unminifyData(decodedRaw);
-                setGuestData(decoded); setIsGuestMode(true);
-                if (decoded.sheetId) setGoogleSheetId(decoded.sheetId); 
-                if (decoded.prices) setMarketPrices(decoded.prices);
-                if (decoded.lastUpdated) setLastUpdated(decoded.lastUpdated);
-                setViewMode('dashboard');
-                window.history.replaceState(null, '', window.location.pathname);
-            } catch (e) {
-                console.error("Hash parse error", e);
-                alert("連結無效或資料已損毀");
-            }
-        }
-        setIsInitializing(false);
-        setIsDataLoaded(false); 
     } else {
         loadCloudData();
     }
@@ -1069,7 +1095,8 @@ const App = () => {
         lastUpdated,
         googleSheetId,
         portfolioSheetUrl,
-        savedPassword
+        savedPassword,
+        lockedTickers 
       };
       try {
         await fetch('/api/storage', {
@@ -1084,7 +1111,7 @@ const App = () => {
 
     const timeoutId = setTimeout(saveCloudData, 500);
     return () => clearTimeout(timeoutId);
-  }, [clients, allPositions, marketPrices, lastUpdated, googleSheetId, portfolioSheetUrl, savedPassword, isDataLoaded, isGuestMode]);
+  }, [clients, allPositions, marketPrices, lastUpdated, googleSheetId, portfolioSheetUrl, savedPassword, isDataLoaded, isGuestMode, lockedTickers]);
 
   const fetchWithFallback = async (targetUrl) => {
       const decoder = new TextDecoder('utf-8');
@@ -1107,7 +1134,6 @@ const App = () => {
   };
 
   useEffect(() => {
-      // 🌟 修正：獲取安全的本地端今天字串，解決 Date 導致的 Crash 白畫面
       const todayObj = new Date();
       const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
       let hasUpdates = false;
@@ -1197,7 +1223,6 @@ const App = () => {
     let laggard = null; let minPerf = 99999;
     const allTouchedKO = pos.underlyings.every(u => u.memoryKO);
     
-    // 🌟 修正：計算當下要渲染的安全字串
     const todayRenderObj = new Date();
     const todayRenderStr = `${todayRenderObj.getFullYear()}-${String(todayRenderObj.getMonth() + 1).padStart(2, '0')}-${String(todayRenderObj.getDate()).padStart(2, '0')}`;
     const currentDynamicKoLevel = getDynamicKoLevel(pos, todayRenderStr);
@@ -1253,8 +1278,14 @@ const App = () => {
     setIsLoading(true);
     const updatedPrices = { ...marketPrices };
     let successCount = 0;
+    let skipCount = 0;
 
     for (const ticker of activeTickers) {
+        if (lockedTickers && lockedTickers.includes(ticker)) {
+            skipCount++; 
+            continue;
+        }
+
         try {
             const cleanTicker = ticker.toString().replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
             const response = await fetch(`/api/quote?ticker=${cleanTicker}`);
@@ -1269,70 +1300,24 @@ const App = () => {
         }
     }
 
-    if (successCount > 0) {
-        setMarketPrices(updatedPrices);
-        setLastUpdated(new Date().toLocaleString() + " (手動更新)");
-        alert(`✅ 即時報價更新完成！(成功更新 ${successCount} 檔標的)`);
-    } else {
-        alert("❌ 無法抓取報價，請確認網路連線或 API 設定。");
-    }
+    setMarketPrices(updatedPrices);
+    setLastUpdated(new Date().toLocaleString() + " (部分標的手動鎖定中)");
+    alert(`✅ 報價更新完成！\n• 成功更新: ${successCount} 檔\n• 智慧鎖定維持不變: ${skipCount} 檔`);
     setIsLoading(false);
   };
 
-  const handleSyncPortfolio = (newClients, newPositions) => {
-      setClients(newClients);
-      setAllPositions(newPositions);
-      if(newClients.length > 0) {
-          if(!newClients.find(c => c.id === activeClientId)) {
-              setActiveClientId(newClients[0].id);
-          }
+  const handleAllUnlockMarket = () => {
+      if (confirm("確定解除所有標的的手動鎖定，全面回歸 API 自動抓取價格嗎？")) {
+          setLockedTickers([]);
+          alert("已全部解鎖！您可以按「更新即時報價」重新刷新全盤股價。");
       }
   };
-  
-  const handleSavePosition = (e) => {
-    e.preventDefault();
-    const validUnderlyings = formUnderlyings.filter(u => u.ticker.trim() !== "").map(u => ({ ticker: u.ticker.toUpperCase(), entryPrice: parseFloat(u.entryPrice), memoryKO: u.memoryKO || false }));
-    if (validUnderlyings.length === 0) return;
-    const updatedPrices = { ...marketPrices };
-    validUnderlyings.forEach(u => { if (getPriceForTicker(u.ticker) === undefined) updatedPrices[u.ticker] = u.entryPrice; });
-    setMarketPrices(updatedPrices);
-    const tickersStr = validUnderlyings.map(u => u.ticker).join('/');
-    
-    const entryData = {
-      clientId: activeClientId, 
-      productName: formPosition.productName || `FCN ${tickersStr}`, 
-      issuer: formPosition.issuer || "Self", 
-      nominal: parseFloat(formPosition.nominal), 
-      currency: formPosition.currency, 
-      couponRate: parseFloat(formPosition.couponRate), 
-      strikeDate: formPosition.strikeDate, 
-      koObservationStartDate: formPosition.koObservationStartDate, 
-      maturityDate: formPosition.maturityDate, 
-      tenor: formPosition.tenor, 
-      koLevel: parseFloat(formPosition.koLevel), 
-      kiLevel: parseFloat(formPosition.kiLevel), 
-      strikeLevel: parseFloat(formPosition.strikeLevel), 
-      koType: formPosition.koType || "Daily",
-      stepDownRate: parseFloat(formPosition.stepDownRate || 0),
-      underlyings: validUnderlyings, 
-      status: "Active"
-    };
-    if (editId) setAllPositions(prev => prev.map(p => p.id === editId ? { ...entryData, id: editId } : p));
-    else setAllPositions(prev => [...prev, { ...entryData, id: Date.now() }]);
-    setIsAddModalOpen(false);
-  };
-
-  const deletePosition = (id) => { checkAuth(() => { if(confirm("確定刪除此部位？")) setAllPositions(allPositions.filter(p => p.id !== id)); }); };
-  const handleAddClient = (name) => { checkAuth(() => { if (name) { const newId = `c${Date.now()}`; setClients(prev => [...prev, { id: newId, name }]); setActiveClientId(newId); } }); };
-  const handleDeleteClient = (id) => { checkAuth(() => { if (clients.length <= 1) return alert("至少需保留一位"); if (confirm("確定刪除？")) { setClients(prev => prev.filter(c => c.id !== id)); setAllPositions(prev => prev.filter(p => p.clientId !== id)); if (activeClientId === id) setActiveClientId(clients[0].id); } }); };
 
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
-      
       const baseUrl = window.location.href.split(/[?#]/)[0];
       const liveUrl = `${baseUrl}#c=${clientId}`;
-      
       setCurrentShareData({ url: liveUrl, name: client.name });
       setIsClientManagerOpen(false); 
       setIsShareLinkModalOpen(true);
@@ -1360,42 +1345,6 @@ const App = () => {
       setIsAddModalOpen(true); 
   }); };
 
-  const handleExportCSV = () => {
-    const headers = ["投資人", "產品名稱", "發行商", "幣別", "名目本金", "年息(%)", "到期日", "KO觀察日", "觀察頻率", "KI(%)", "KO(%)", "遞減率(%)", "履約(%)", "連結標的 (代碼 進場價)", "最差標的", "現價", "進場價", "表現(%)", "狀態"];
-    const rows = (isGuestMode ? currentClientPositions : allPositions).map(pos => {
-      const calculated = calculateRisk(pos);
-      const clientName = isGuestMode ? activeClient.name : (clients.find(c => c.id === pos.clientId)?.name || "未知");
-      
-      const allUnderlyingsClean = pos.underlyings.map(u => 
-          `${u.ticker} ${u.entryPrice}`
-      ).join(' / ');
-
-      return [
-        clientName, pos.productName, pos.issuer, pos.currency, pos.nominal, pos.couponRate, 
-        pos.maturityDate, pos.koObservationStartDate || "", pos.koType === 'Monthly' ? "每月" : "天天",
-        pos.kiLevel, pos.koLevel, pos.koType === 'Monthly' ? (pos.stepDownRate || 0) : 0, pos.strikeLevel,
-        allUnderlyingsClean, calculated.laggard?.ticker || "", calculated.laggard?.currentPrice || 0, calculated.laggard?.entryPrice || 0, calculated.laggard?.performance?.toFixed(2) || "0.00", calculated.riskStatus
-      ];
-    });
-    const csvString = [headers.join(','), ...rows.map(row => row.map(item => `"${String(item).replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a"); link.href = url; link.setAttribute("download", `FCN_Portfolio.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
-  };
-
-  if (isInitializing) {
-      return (
-          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-              <Loader className="animate-spin text-blue-600 mb-4" size={48} />
-              <h2 className="text-xl font-bold text-slate-800">正在讀取最新雲端資產狀態...</h2>
-          </div>
-      );
-  }
-
-  if (viewMode === 'landing') {
-      return <LandingPage onAdminLogin={handleAdminLogin} hasPassword={!!savedPassword}/>;
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-10">
       {isGuestMode && (
@@ -1422,7 +1371,10 @@ const App = () => {
               )}
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
-               <button onClick={handleExportCSV} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span className="hidden sm:inline">匯出</span><span className="sm:hidden">匯出</span></button>
+               {!isGuestMode && lockedTickers && lockedTickers.length > 0 && (
+                   <button onClick={handleAllUnlockMarket} className="flex-none flex items-center justify-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-2 rounded-lg text-sm transition font-bold"><Unlock size={14}/> 全盤解鎖</button>
+               )}
+               <button onClick={()=>setIsExportModalOpen(true)} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span>匯出</span></button>
 
                {!isGuestMode && (
                    <>
@@ -1435,7 +1387,7 @@ const App = () => {
                         <ArrowRightLeft size={16} />
                         <span>資料同步</span>
                     </button>
-                    <button onClick={handleOpenAddModal} className="flex-none flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-md whitespace-nowrap"><Plus size={16} /><span className="hidden sm:inline">新增</span><span className="sm:hidden">新增</span></button>
+                    <button onClick={handleOpenAddModal} className="flex-none flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-md whitespace-nowrap"><Plus size={16} /><span>新增</span></button>
                    </>
                )}
             </div>
@@ -1529,7 +1481,6 @@ const App = () => {
                       const currencyLabel = pos.currency === 'USD' ? '美元' : (pos.currency === 'JPY' ? '日圓' : pos.currency);
                       const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
                       
-                      // 🌟 修正：確保每一行渲染都能讀取到安全的字串
                       const todayRenderObj = new Date();
                       const todayRenderStr = `${todayRenderObj.getFullYear()}-${String(todayRenderObj.getMonth() + 1).padStart(2, '0')}-${String(todayRenderObj.getDate()).padStart(2, '0')}`;
                       const nextObsStr = getNextObsDateStr(pos, todayRenderStr);
@@ -1601,6 +1552,8 @@ const App = () => {
                               </div>
                               
                               {(pos.underlyingDetails || []).map((u) => {
+                                const isTickerLocked = lockedTickers && lockedTickers.includes(u.ticker);
+
                                 return (
                                   <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : 'hover:bg-slate-50'}`}>
                                     <div className="col-span-2 flex flex-col justify-center min-w-0">
@@ -1616,7 +1569,10 @@ const App = () => {
                                             )}
                                             {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
                                             
-                                            <span className={`font-black text-sm md:text-base truncate ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}</span>
+                                            <span className={`font-black text-sm md:text-base truncate flex items-center gap-1 ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>
+                                                {u.ticker}
+                                                {isTickerLocked && !isGuestMode && <span className="text-amber-500 text-[10px]" title="此標的已強制手動鎖定報價，不受 API 自動干擾">🔒</span>}
+                                            </span>
                                         </div>
                                         <span className={`sm:hidden font-mono font-black text-xs whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>
                                             {pos.currency === 'JPY' ? '¥' : '$'}{u.currentPrice.toLocaleString()}
@@ -1664,7 +1620,7 @@ const App = () => {
       </main>
 
       {/* Modals */}
-      {isDataSyncModalOpen && <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} />}
+      {isDataSyncModalOpen && <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} lockedTickers={lockedTickers} setLockedTickers={setLockedTickers} />}
       {isAddModalOpen && <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />}
       {isClientManagerOpen && <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} isGeneratingShareLink={isGeneratingShareLink} />}
       {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} allPositions={allPositions} clients={clients} marketPrices={marketPrices} calculateRisk={calculateRisk} />}

@@ -5,7 +5,6 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// 🌟 三重交叉備援抓價引擎
 async function fetchPrice(ticker) {
     try {
         const cleanTicker = ticker.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
@@ -13,7 +12,6 @@ async function fetchPrice(ticker) {
 
         let finalPrice = null;
 
-        // 1. 日股優先
         if (isJP) {
             try {
                 const gfRes = await fetch(`https://www.google.com/finance/quote/${cleanTicker}:TYO`, {
@@ -25,7 +23,6 @@ async function fetchPrice(ticker) {
             } catch (e) {}
         }
 
-        // 2. Yahoo API 主力
         if (finalPrice === null) {
             try {
                 let fetchTicker = cleanTicker;
@@ -38,7 +35,6 @@ async function fetchPrice(ticker) {
             } catch (e) {}
         }
 
-        // 3. 美股 Google Finance 終極備援 (解決 SNDK 等分拆股問題)
         if (finalPrice === null && !isJP) {
             try {
                 const exchanges = ['NASDAQ', 'NYSE'];
@@ -64,15 +60,27 @@ async function fetchPrice(ticker) {
     }
 }
 
+// 🌟 核心修正：精準推演真實觀察日，完美解決假日順延導致的誤判降階
 const getDynamicKoLevel = (pos, targetDateStr) => {
     if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
     if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
 
-    const [startYear, startMonth, startDay] = pos.koObservationStartDate.split('-').map(Number);
-    const [year, month, day] = targetDateStr.split('-').map(Number);
+    const [sYear, sMonth, sDay] = pos.koObservationStartDate.split('-').map(Number);
+    let stepDowns = 0;
 
-    let stepDowns = (year - startYear) * 12 + (month - startMonth);
-    if (day > startDay) stepDowns++;
+    for (let i = 0; i < 120; i++) { 
+        let candidate = new Date(sYear, sMonth - 1 + i, sDay);
+        // 遇到假日順延
+        if (candidate.getDay() === 6) candidate.setDate(candidate.getDate() + 2);
+        else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
+        
+        const candidateStr = `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')}`;
+        
+        if (targetDateStr <= candidateStr) {
+            stepDowns = i;
+            break;
+        }
+    }
     
     return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
 };
