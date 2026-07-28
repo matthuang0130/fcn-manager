@@ -1332,16 +1332,32 @@ const App = () => {
       setIsAddModalOpen(true); 
   }); };
   
-  const handleOpenEditModal = (pos) => { checkAuth(() => { 
+const handleOpenEditModal = (pos) => { checkAuth(() => { 
       setEditId(pos.id); 
       setFormPosition({ 
-          productName: pos.productName, issuer: pos.issuer, nominal: pos.nominal, currency: pos.currency, couponRate: pos.couponRate, 
-          koLevel: pos.koLevel, kiLevel: pos.kiLevel, strikeLevel: pos.strikeLevel, 
-          strikeDate: pos.strikeDate, koObservationStartDate: pos.koObservationStartDate, tenor: pos.tenor, maturityDate: pos.maturityDate,
-          koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0,
+          productName: pos.productName || "", 
+          issuer: pos.issuer || "", 
+          nominal: pos.nominal || 0, 
+          currency: pos.currency || "USD", 
+          couponRate: pos.couponRate || 0, 
+          koLevel: pos.koLevel || 100, 
+          kiLevel: pos.kiLevel || 70, 
+          strikeLevel: pos.strikeLevel || 100, 
+          strikeDate: pos.strikeDate || "", 
+          koObservationStartDate: pos.koObservationStartDate || "", 
+          tenor: pos.tenor || "", 
+          maturityDate: pos.maturityDate || "",
+          koType: pos.koType || "Daily", 
+          stepDownRate: pos.stepDownRate || 0,
           manualNextObsDate: pos.manualNextObsDate || ""
       }); 
-      setFormUnderlyings(pos.underlyings.map((u, idx) => ({ ...u, id: Date.now() + idx, memoryKO: u.memoryKO || false }))); 
+      // 🌟 核心修復：加上 (pos.underlyings || []) 保護，避免舊資料沒有標的導致 map 崩潰
+      setFormUnderlyings((pos.underlyings || []).map((u, idx) => ({ 
+          ticker: u.ticker || "",
+          entryPrice: u.entryPrice || 0,
+          memoryKO: u.memoryKO || false,
+          id: Date.now() + idx 
+      }))); 
       setIsAddModalOpen(true); 
   }); };
 
