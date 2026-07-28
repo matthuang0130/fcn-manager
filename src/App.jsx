@@ -274,8 +274,21 @@ const parsePortfolioRows = (rows) => {
     return { clients: newClients, positions: newPositions };
 };
 
-const LandingPage = ({ onAdminLogin, hasPassword }) => {
+// 🌟 核心修正：強制門禁 LandingPage 
+const LandingPage = ({ onAdminLogin, hasPassword, onSetPassword }) => {
     const [password, setPassword] = useState("");
+    
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!hasPassword) {
+            if (!password.trim()) return alert("請輸入您想設定的新密碼");
+            onSetPassword(password.trim());
+            onAdminLogin(password.trim(), true); // true 代表是新設定的密碼
+        } else {
+            onAdminLogin(password);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden p-6">
@@ -284,17 +297,27 @@ const LandingPage = ({ onAdminLogin, hasPassword }) => {
                         <Activity size={32} className="text-white"/>
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800">FCN 投資組合管理</h1>
-                    <p className="text-sm text-slate-500 mt-2">專業結構型商品監控系統 (雲端版)</p>
+                    <p className="text-sm text-slate-500 mt-2">專業結構型商品監控系統</p>
                 </div>
-                <form onSubmit={(e)=>{e.preventDefault(); onAdminLogin(password);}} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-1">
-                        <label className="text-sm font-bold text-slate-500 uppercase tracking-wide">管理員登入</label>
-                        <input type="password" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition" placeholder={hasPassword ? "請輸入密碼" : "尚未設定密碼 (直接登入)"} value={password} onChange={e=>setPassword(e.target.value)}/>
+                        <label className="text-sm font-bold text-slate-500 uppercase tracking-wide">
+                            {hasPassword ? "管理員解鎖" : "初次使用：請設定專屬密碼"}
+                        </label>
+                        <input 
+                            type="password" 
+                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition" 
+                            placeholder={hasPassword ? "請輸入密碼" : "請設定一個新密碼"} 
+                            value={password} 
+                            onChange={e=>setPassword(e.target.value)}
+                        />
                     </div>
-                    <button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3.5 rounded-lg font-bold shadow-md transition transform active:scale-95">登入系統</button>
+                    <button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3.5 rounded-lg font-bold shadow-md transition transform active:scale-95">
+                        {hasPassword ? "登入系統" : "設定並進入系統"}
+                    </button>
                 </form>
                 <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-                    <p className="text-sm text-slate-400">投資人請直接點擊您收到的專屬連結進入。</p>
+                    <p className="text-sm text-slate-400">系統採強制加密連線，無密碼者無法查看資料。</p>
                 </div>
             </div>
         </div>
@@ -361,9 +384,14 @@ const SettingsModal = ({ isOpen, onClose, savedPassword, setSavedPassword, setIs
                 <div className="mb-6 border-b border-slate-100 pb-4">
                     <h4 className="text-sm font-bold text-slate-500 mb-2 uppercase">管理員密碼</h4>
                     {savedPassword ? (
-                        <div className="space-y-2"><p className="text-sm text-slate-600">目前已設定密碼。</p><button onClick={() => { if(confirm("確定移除密碼？")) { setSavedPassword(""); setIsUnlocked(true); }}} className="w-full bg-red-50 text-red-600 py-2 rounded font-bold text-sm border border-red-100">移除密碼</button></div>
+                        <div className="space-y-2">
+                            <p className="text-sm text-slate-600">目前已設定密碼。</p>
+                            <button onClick={() => { if(confirm("確定移除密碼？\n移除後下次登入系統將會要求您重新設定。")) { setSavedPassword(""); setIsUnlocked(true); }}} className="w-full bg-red-50 text-red-600 py-2 rounded font-bold text-sm border border-red-100">
+                                移除密碼
+                            </button>
+                        </div>
                     ) : (
-                        <div className="space-y-2"><p className="text-sm text-slate-500 mb-2">設定密碼後，修改資料需先解鎖。</p><PasswordInput onConfirm={(pwd) => { setSavedPassword(pwd); setIsUnlocked(false); }} btnText="設定"/></div>
+                        <div className="space-y-2"><p className="text-sm text-slate-500 mb-2">設定密碼後，系統將強制上鎖。</p><PasswordInput onConfirm={(pwd) => { setSavedPassword(pwd); setIsUnlocked(true); alert("密碼設定成功！"); }} btnText="設定"/></div>
                     )}
                 </div>
 
@@ -1213,10 +1241,29 @@ const App = () => {
     return Array.from(tickers).sort();
   }, [allPositions, currentClientPositions, isGuestMode]);
 
+  // 🌟 強制密碼登入驗證邏輯
+  const handleAdminLogin = (inputPwd, isNewSetup = false) => { 
+      if (isNewSetup || (savedPassword && inputPwd === savedPassword)) { 
+          setIsUnlocked(true); 
+          setIsGuestMode(false); 
+          setViewMode('dashboard'); 
+          return true; 
+      } else { 
+          alert("登入失敗，密碼錯誤"); 
+          return false; 
+      } 
+  };
+  
   const checkAuth = (action) => { if (isUnlocked) action(); else { setPendingAction(() => action); setIsPasswordPromptOpen(true); } };
   const handleUnlock = (inputPwd) => { if (inputPwd === savedPassword) { setIsUnlocked(true); setIsPasswordPromptOpen(false); if (pendingAction) { pendingAction(); setPendingAction(null); } } else { alert("密碼錯誤"); } };
-  const handleAdminLogin = (inputPwd) => { if (!savedPassword || inputPwd === savedPassword) { setIsUnlocked(true); setIsGuestMode(false); setViewMode('dashboard'); return true; } else { alert("密碼錯誤"); return false; } };
-  const handleManualLock = () => { if(savedPassword) setIsUnlocked(false); };
+  
+  // 🌟 點擊上鎖時，直接強制踢回第一頁登入畫面，完全阻擋視線
+  const handleManualLock = () => { 
+      if(savedPassword) {
+          setIsUnlocked(false); 
+          setViewMode('landing'); 
+      }
+  };
 
   const calculateRisk = (pos) => {
     let laggard = null; let minPerf = 99999;
@@ -1322,7 +1369,7 @@ const App = () => {
       }
   };
 
-  // 🌟 被遺漏的重要函數，現在已經補回來了！
+  // 🌟 已經補回並加固的儲存部位功能
   const handleSavePosition = (e) => {
     e.preventDefault();
     const validUnderlyings = formUnderlyings.filter(u => u.ticker.trim() !== "").map(u => ({ ticker: u.ticker.toUpperCase(), entryPrice: parseFloat(u.entryPrice), memoryKO: u.memoryKO || false }));
@@ -1379,7 +1426,6 @@ const App = () => {
       setIsAddModalOpen(true); 
   }); };
   
-  // 🌟 新增的空值保護機制，確保舊資料不會導致崩潰
   const handleOpenEditModal = (pos) => { checkAuth(() => { 
       setEditId(pos.id); 
       setFormPosition({ 
@@ -1408,6 +1454,20 @@ const App = () => {
       setIsAddModalOpen(true); 
   }); };
 
+  if (isInitializing) {
+      return (
+          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+              <Loader className="animate-spin text-blue-600 mb-4" size={48} />
+              <h2 className="text-xl font-bold text-slate-800">正在讀取最新雲端資產狀態...</h2>
+          </div>
+      );
+  }
+
+  // 🌟 強制攔截第一頁，沒有登入絕對不放行
+  if (viewMode === 'landing') {
+      return <LandingPage onAdminLogin={handleAdminLogin} hasPassword={!!savedPassword} onSetPassword={setSavedPassword} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-10">
       {isGuestMode && (
@@ -1421,6 +1481,7 @@ const App = () => {
           <div className="flex flex-col md:flex-row justify-between items-center gap-3">
             <div className="flex items-center justify-between w-full md:w-auto gap-4">
               <div className="flex items-center gap-2"><Activity className="text-blue-600 h-6 w-6" /><h1 className="text-lg font-bold text-slate-800 hidden sm:block">FCN 管理</h1>
+                {/* 🌟 點擊上鎖圖示，就會立刻踢回第一頁登入畫面 */}
                 {!isGuestMode && (<button onClick={() => { if(savedPassword && isUnlocked) handleManualLock(); else if(savedPassword && !isUnlocked) setIsPasswordPromptOpen(true); else setIsSettingsModalOpen(true); }} className="ml-2 p-1.5 rounded-full transition-colors hover:bg-slate-100">{savedPassword ? (isUnlocked ? <Unlock size={16} className="text-green-600"/> : <Lock size={16} className="text-red-600"/>) : (<Settings size={16} className="text-slate-400 hover:text-slate-600"/>)}</button>)}
               </div>
               {!isGuestMode && (
