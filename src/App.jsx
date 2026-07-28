@@ -944,7 +944,6 @@ const App = () => {
     return undefined;
   };
 
-  // 🌟 核心修正：精準推算真實觀察日
   const getDynamicKoLevel = (pos, targetDateStr) => {
       if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
       if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
@@ -1313,6 +1312,54 @@ const App = () => {
       }
   };
 
+  const handleSyncPortfolio = (newClients, newPositions) => {
+      setClients(newClients);
+      setAllPositions(newPositions);
+      if(newClients.length > 0) {
+          if(!newClients.find(c => c.id === activeClientId)) {
+              setActiveClientId(newClients[0].id);
+          }
+      }
+  };
+
+  // 🌟 被遺漏的重要函數，現在已經補回來了！
+  const handleSavePosition = (e) => {
+    e.preventDefault();
+    const validUnderlyings = formUnderlyings.filter(u => u.ticker.trim() !== "").map(u => ({ ticker: u.ticker.toUpperCase(), entryPrice: parseFloat(u.entryPrice), memoryKO: u.memoryKO || false }));
+    if (validUnderlyings.length === 0) return;
+    const updatedPrices = { ...marketPrices };
+    validUnderlyings.forEach(u => { if (getPriceForTicker(u.ticker) === undefined) updatedPrices[u.ticker] = u.entryPrice; });
+    setMarketPrices(updatedPrices);
+    const tickersStr = validUnderlyings.map(u => u.ticker).join('/');
+    
+    const entryData = {
+      clientId: activeClientId, 
+      productName: formPosition.productName || `FCN ${tickersStr}`, 
+      issuer: formPosition.issuer || "Self", 
+      nominal: parseFloat(formPosition.nominal), 
+      currency: formPosition.currency, 
+      couponRate: parseFloat(formPosition.couponRate), 
+      strikeDate: formPosition.strikeDate, 
+      koObservationStartDate: formPosition.koObservationStartDate, 
+      maturityDate: formPosition.maturityDate, 
+      tenor: formPosition.tenor, 
+      koLevel: parseFloat(formPosition.koLevel), 
+      kiLevel: parseFloat(formPosition.kiLevel), 
+      strikeLevel: parseFloat(formPosition.strikeLevel), 
+      koType: formPosition.koType || "Daily",
+      stepDownRate: parseFloat(formPosition.stepDownRate || 0),
+      underlyings: validUnderlyings, 
+      status: "Active"
+    };
+    if (editId) setAllPositions(prev => prev.map(p => p.id === editId ? { ...entryData, id: editId } : p));
+    else setAllPositions(prev => [...prev, { ...entryData, id: Date.now() }]);
+    setIsAddModalOpen(false);
+  };
+
+  const deletePosition = (id) => { checkAuth(() => { if(confirm("確定刪除此部位？")) setAllPositions(allPositions.filter(p => p.id !== id)); }); };
+  const handleAddClient = (name) => { checkAuth(() => { if (name) { const newId = `c${Date.now()}`; setClients(prev => [...prev, { id: newId, name }]); setActiveClientId(newId); } }); };
+  const handleDeleteClient = (id) => { checkAuth(() => { if (clients.length <= 1) return alert("至少需保留一位"); if (confirm("確定刪除？")) { setClients(prev => prev.filter(c => c.id !== id)); setAllPositions(prev => prev.filter(p => p.clientId !== id)); if (activeClientId === id) setActiveClientId(clients[0].id); } }); };
+
   const handleGenerateShareLink = async (clientId) => {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
@@ -1332,7 +1379,8 @@ const App = () => {
       setIsAddModalOpen(true); 
   }); };
   
-const handleOpenEditModal = (pos) => { checkAuth(() => { 
+  // 🌟 新增的空值保護機制，確保舊資料不會導致崩潰
+  const handleOpenEditModal = (pos) => { checkAuth(() => { 
       setEditId(pos.id); 
       setFormPosition({ 
           productName: pos.productName || "", 
@@ -1351,7 +1399,6 @@ const handleOpenEditModal = (pos) => { checkAuth(() => {
           stepDownRate: pos.stepDownRate || 0,
           manualNextObsDate: pos.manualNextObsDate || ""
       }); 
-      // 🌟 核心修復：加上 (pos.underlyings || []) 保護，避免舊資料沒有標的導致 map 崩潰
       setFormUnderlyings((pos.underlyings || []).map((u, idx) => ({ 
           ticker: u.ticker || "",
           entryPrice: u.entryPrice || 0,
