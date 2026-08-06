@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+/* 🌟 Tailwind v4 專屬：告訴系統我們用 .dark class 來切換深色模式，而不是跟隨電腦系統 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 讓捲軸和原生元件也變成深色風格 */
+html.dark {
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  /* 讓背景顏色完全交給 App.jsx 控制 */
+  background-color: transparent; 
+}
