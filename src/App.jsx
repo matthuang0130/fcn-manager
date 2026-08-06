@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, TrendingUp, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, Eye, Coins, User, Briefcase, Check, FileText, Pencil, Lock, Unlock, Settings as SettingsIcon, Share2, ArrowRightLeft, Loader } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, Eye, Coins, User, Briefcase, Check, FileText, Pencil, Lock, Unlock, Settings as SettingsIcon, Share2, ArrowRightLeft, Loader, Moon, Sun } from 'lucide-react';
 
 import { DEFAULT_CLIENTS, INITIAL_POSITIONS, DEFAULT_MARKET_PRICES, DEFAULT_FORM_STATE } from './utils/constants';
 import { normalizeTicker, formatToWan } from './utils/helpers';
@@ -17,6 +17,9 @@ const App = () => {
   const [viewMode, setViewMode] = useState('landing');
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestData, setGuestData] = useState(null);
+  
+  // 🌟 深色模式狀態管理
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const [isInitializing, setIsInitializing] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -49,6 +52,24 @@ const App = () => {
   const [formPosition, setFormPosition] = useState({ ...DEFAULT_FORM_STATE, customSchedule: [] });
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
 
+  // 🌟 讀取並套用深色模式
+  useEffect(() => {
+    const savedMode = localStorage.getItem('darkMode') === 'true';
+    setIsDarkMode(savedMode);
+    if (savedMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, []);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => {
+        const newMode = !prev;
+        localStorage.setItem('darkMode', newMode);
+        if (newMode) document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
+        return newMode;
+    });
+  };
+
   const getPriceForTicker = (ticker) => {
     const cleanTarget = normalizeTicker(ticker);
     if (marketPrices[ticker] !== undefined) return marketPrices[ticker];
@@ -57,7 +78,6 @@ const App = () => {
     return undefined;
   };
 
-  // 🌟 核心更新：支援自訂排程與手動強制覆蓋 KO%
   const getDynamicKoLevel = (pos, targetDateStr) => {
       if (pos.manualNextObsDate && pos.manualKoLevel) return pos.manualKoLevel;
 
@@ -94,9 +114,7 @@ const App = () => {
           return upcoming ? upcoming.date : "已結束";
       }
 
-      if (pos.koType !== 'Monthly') {
-          return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
-      }
+      if (pos.koType !== 'Monthly') return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
       if (!pos.koObservationStartDate) return "未設定";
 
       const [sYear, sMonth, sDay] = pos.koObservationStartDate.split('-').map(Number);
@@ -276,7 +294,6 @@ const App = () => {
       });
   };
 
-  // 🌟 核心更新：鉛筆圖示可以同步覆蓋 KO %
   const handleOverrideObsDate = (id, currentStr, currentLevel) => {
       checkAuth(() => {
           const dateVal = prompt("✏️ 請設定下一次觀察日 (格式: YYYY-MM-DD)\n若要恢復系統自動計算，請清空內容並按確認。", currentStr);
@@ -340,11 +357,12 @@ const App = () => {
     });
     const monthlyCoupon = Math.round((pos.nominal * (pos.couponRate / 100)) / 12);
     
-    let riskStatus = "觀察中", statusColor = "bg-blue-100 text-blue-800 border border-blue-200"; 
+    // 🌟 深色模式色碼適配：將原本鮮豔的亮底色，轉換成在黑底也舒適的低彩度標籤
+    let riskStatus = "觀察中", statusColor = "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50"; 
     
-    if (allTouchedKO) { riskStatus = "達成 KO"; statusColor = "bg-red-600 text-white font-bold border border-red-700 shadow-sm animate-pulse"; } 
-    else if (minPerf <= pos.kiLevel) { riskStatus = "已觸及 KI"; statusColor = "bg-green-100 text-green-800 font-bold border border-green-300"; } 
-    else if (minPerf <= pos.kiLevel + 5) { riskStatus = "瀕臨 KI"; statusColor = "bg-orange-100 text-orange-800 font-bold border border-orange-300"; } 
+    if (allTouchedKO) { riskStatus = "達成 KO"; statusColor = "bg-red-600 dark:bg-red-700 text-white font-bold border border-red-700 shadow-sm animate-pulse"; } 
+    else if (minPerf <= pos.kiLevel) { riskStatus = "已觸及 KI"; statusColor = "bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 font-bold border border-green-300 dark:border-green-800/50"; } 
+    else if (minPerf <= pos.kiLevel + 5) { riskStatus = "瀕臨 KI"; statusColor = "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300 font-bold border border-orange-300 dark:border-orange-800/50"; } 
     
     return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon, isProductKO: allTouchedKO, currentDynamicKoLevel };
   };
@@ -391,7 +409,6 @@ const App = () => {
       if(newClients.length > 0 && !newClients.find(c => c.id === activeClientId)) setActiveClientId(newClients[0].id);
   };
 
-  // 🌟 儲存時把 Custom Schedule 也存進去
   const handleSavePosition = (e) => {
     e.preventDefault();
     const validUnderlyings = formUnderlyings.filter(u => u.ticker.trim() !== "").map(u => ({ ticker: u.ticker.toUpperCase(), entryPrice: parseFloat(u.entryPrice), memoryKO: u.memoryKO || false }));
@@ -448,9 +465,9 @@ const App = () => {
 
   if (isInitializing) {
       return (
-          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-              <Loader className="animate-spin text-blue-600 mb-4" size={48} />
-              <h2 className="text-xl font-bold text-slate-800">正在讀取最新雲端資產狀態...</h2>
+          <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center p-4">
+              <Loader className="animate-spin text-blue-600 dark:text-blue-400 mb-4" size={48} />
+              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">正在讀取最新雲端資產狀態...</h2>
           </div>
       );
   }
@@ -459,134 +476,144 @@ const App = () => {
       return <LandingPage onAdminLogin={handleAdminLogin} hasPassword={!!savedPassword} onSetPassword={setSavedPassword} />;
   }
 
+  // 🌟 整個系統全面套用 dark: 前綴，適配石板灰暗色系
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-10">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans pb-10 transition-colors duration-300">
       {isGuestMode && (
-          <div className="bg-blue-600 text-white px-4 py-2 text-sm flex justify-between items-center sticky top-0 z-50 shadow-md">
+          <div className="bg-blue-600 dark:bg-blue-800 text-white px-4 py-2 text-sm flex justify-between items-center sticky top-0 z-50 shadow-md">
               <div className="flex items-center gap-2"><Eye size={14} /><span className="font-bold">投資人資產看板（唯讀）：{activeClient.name}</span></div>
               <button onClick={handleExitGuestMode} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 transition"><X size={12}/> 登出</button>
           </div>
       )}
-      <header className={`bg-white shadow-sm border-b border-slate-200 ${!isGuestMode ? 'sticky top-0 z-40' : ''}`}>
+      <header className={`bg-white dark:bg-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-700 transition-colors duration-300 ${!isGuestMode ? 'sticky top-0 z-40' : ''}`}>
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex flex-col md:flex-row justify-between items-center gap-3">
             <div className="flex items-center justify-between w-full md:w-auto gap-4">
-              <div className="flex items-center gap-2"><Activity className="text-blue-600 h-6 w-6" /><h1 className="text-lg font-bold text-slate-800 hidden sm:block">FCN 管理</h1>
-                {!isGuestMode && (<button onClick={() => { if(savedPassword && isUnlocked) handleManualLock(); else if(savedPassword && !isUnlocked) setIsPasswordPromptOpen(true); else setIsSettingsModalOpen(true); }} className="ml-2 p-1.5 rounded-full transition-colors hover:bg-slate-100">{savedPassword ? (isUnlocked ? <Unlock size={16} className="text-green-600"/> : <Lock size={16} className="text-red-600"/>) : (<SettingsIcon size={16} className="text-slate-400 hover:text-slate-600"/>)}</button>)}
+              <div className="flex items-center gap-2"><Activity className="text-blue-600 dark:text-blue-400 h-6 w-6" /><h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 hidden sm:block">FCN 管理</h1>
+                {!isGuestMode && (<button onClick={() => { if(savedPassword && isUnlocked) handleManualLock(); else if(savedPassword && !isUnlocked) setIsPasswordPromptOpen(true); else setIsSettingsModalOpen(true); }} className="ml-2 p-1.5 rounded-full transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">{savedPassword ? (isUnlocked ? <Unlock size={16} className="text-green-600 dark:text-green-400"/> : <Lock size={16} className="text-red-600 dark:text-red-400"/>) : (<SettingsIcon size={16} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"/>)}</button>)}
+                
+                {/* 🌟 日夜間模式切換按鈕 */}
+                <button onClick={toggleDarkMode} className="ml-1 p-1.5 rounded-full transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+                </button>
               </div>
               {!isGuestMode && (
-                <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 pr-3 relative group">
-                    <div className="bg-white p-1.5 rounded shadow-sm text-blue-600"><User size={16} /></div>
-                    <select value={activeClientId} onChange={(e) => setActiveClientId(e.target.value)} className="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer appearance-none pr-6 min-w-[120px]">{clients.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}</select>
+                <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/50 rounded-lg p-1 pr-3 relative group">
+                    <div className="bg-white dark:bg-slate-700 p-1.5 rounded shadow-sm text-blue-600 dark:text-blue-400"><User size={16} /></div>
+                    <select value={activeClientId} onChange={(e) => setActiveClientId(e.target.value)} className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-0 cursor-pointer appearance-none pr-6 min-w-[120px]">
+                        {clients.map(c => (<option key={c.id} value={c.id} className="dark:bg-slate-800">{c.name}</option>))}
+                    </select>
                     <ChevronDown size={14} className="absolute right-2 text-slate-400 pointer-events-none"/>
-                    <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600" title="生成最新動態連結"><Share2 size={16} /></button>
-                    <button onClick={() => setIsClientManagerOpen(true)} className="ml-1 text-slate-400 hover:text-blue-600"><Edit3 size={14} /></button>
+                    <button onClick={() => handleGenerateShareLink(activeClientId)} className="ml-2 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400" title="生成最新動態連結"><Share2 size={16} /></button>
+                    <button onClick={() => setIsClientManagerOpen(true)} className="ml-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"><Edit3 size={14} /></button>
                 </div>
               )}
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto justify-end overflow-x-auto no-scrollbar">
                {!isGuestMode && lockedTickers && lockedTickers.length > 0 && (
-                   <button onClick={handleAllUnlockMarket} className="flex-none flex items-center justify-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-2 rounded-lg text-sm transition font-bold"><Unlock size={14}/> 全盤解鎖</button>
+                   <button onClick={handleAllUnlockMarket} className="flex-none flex items-center justify-center gap-1 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 px-3 py-2 rounded-lg text-sm transition font-bold"><Unlock size={14}/> 全盤解鎖</button>
                )}
-               <button onClick={()=>setIsExportModalOpen(true)} className="flex-none flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span>匯出</span></button>
+               <button onClick={()=>setIsExportModalOpen(true)} className="flex-none flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"><FileText size={16} /><span>匯出</span></button>
 
                {!isGuestMode && (
                    <>
-                    <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <button onClick={handleSyncLivePrices} disabled={isLoading} className={`flex-none flex items-center justify-center gap-1 bg-blue-500 dark:bg-blue-600 hover:bg-blue-600 dark:hover:bg-blue-500 text-white border border-blue-600 dark:border-blue-500 px-3 py-2 rounded-lg text-sm transition shadow-sm whitespace-nowrap ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
                         <span className="hidden sm:inline">更新即時報價</span>
                         <span className="sm:hidden">更新報價</span>
                     </button>
                     <button onClick={() => checkAuth(() => setIsDataSyncModalOpen(true))} className="flex-none flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 text-white border border-purple-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap shadow-md">
-                        <ArrowRightLeft size={16} />
-                        <span>資料同步</span>
+                        <ArrowRightLeft size={16} /><span>資料同步</span>
                     </button>
-                    <button onClick={handleOpenAddModal} className="flex-none flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-md whitespace-nowrap"><Plus size={16} /><span>新增</span></button>
+                    <button onClick={handleOpenAddModal} className="flex-none flex items-center justify-center gap-1 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm transition shadow-md whitespace-nowrap"><Plus size={16} /><span>新增</span></button>
                    </>
                )}
             </div>
           </div>
         </div>
       </header>
+
       <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-9 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><DollarSign size={48} className="text-slate-400"/></div>
+            {/* 卡片區同樣套用黑底設定 */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 group-hover:opacity-20 transition-opacity"><DollarSign size={48} className="text-slate-400"/></div>
                 <div className="relative z-10">
-                    <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">USD 資產總覽</div>
+                    <div className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">USD 資產總覽</div>
                     <div className="flex flex-col gap-1">
-                        <div className="flex items-baseline gap-1"><span className="text-2xl font-black text-slate-800">${(summary.usd.nominal/10000).toFixed(0)}</span><span className="text-sm font-bold text-slate-600">萬</span><span className="text-xs text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span></div>
-                        <div className="flex items-center gap-1 text-red-700 font-bold"><Plus size={12} strokeWidth={4} /><span className="text-lg">${summary.usd.monthly.toLocaleString()}</span><span className="text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span></div>
+                        <div className="flex items-baseline gap-1"><span className="text-2xl font-black text-slate-800 dark:text-slate-100">${(summary.usd.nominal/10000).toFixed(0)}</span><span className="text-sm font-bold text-slate-600 dark:text-slate-400">萬</span><span className="text-xs text-slate-400 dark:text-slate-500 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
+                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={12} strokeWidth={4} /><span className="text-lg">${summary.usd.monthly.toLocaleString()}</span><span className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
                     </div>
                 </div>
             </div>
 
-            <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Coins size={48} className="text-slate-400"/></div>
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 group-hover:opacity-20 transition-opacity"><Coins size={48} className="text-slate-400"/></div>
                 <div className="relative z-10">
-                    <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">JPY 資產總覽</div>
+                    <div className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">JPY 資產總覽</div>
                      <div className="flex flex-col gap-1">
-                        <div className="flex items-baseline gap-1"><span className="text-2xl font-black text-slate-800">¥{(summary.jpy.nominal/10000).toFixed(0)}</span><span className="text-sm font-bold text-slate-600">萬</span><span className="text-xs text-slate-400 ml-1 bg-slate-100 px-1.5 py-0.5 rounded">本金</span></div>
-                        <div className="flex items-center gap-1 text-red-700 font-bold"><Plus size={12} strokeWidth={4} /><span className="text-lg">¥{summary.jpy.monthly.toLocaleString()}</span><span className="text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 border border-red-100">月息</span></div>
+                        <div className="flex items-baseline gap-1"><span className="text-2xl font-black text-slate-800 dark:text-slate-100">¥{(summary.jpy.nominal/10000).toFixed(0)}</span><span className="text-sm font-bold text-slate-600 dark:text-slate-400">萬</span><span className="text-xs text-slate-400 dark:text-slate-500 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
+                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={12} strokeWidth={4} /><span className="text-lg">¥{summary.jpy.monthly.toLocaleString()}</span><span className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
                     </div>
                 </div>
             </div>
 
-            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.koCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-              <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">KO 機會</span>
-              <div className="flex items-end justify-between mt-2"><span className="text-3xl font-black text-red-600">{summary.koCount}</span><TrendingUp size={24} className="text-red-400 mb-1"/></div>
+            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.koCount > 0 ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+              <span className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">KO 機會</span>
+              <div className="flex items-end justify-between mt-2"><span className="text-3xl font-black text-red-600 dark:text-red-400">{summary.koCount}</span><TrendingUp size={24} className="text-red-400 dark:text-red-500 mb-1"/></div>
             </div>
             
-            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.kiCount > 0 ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'}`}>
-              <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">KI 風險</span>
-              <div className="flex items-end justify-between mt-2"><span className="text-3xl font-black text-green-600">{summary.kiCount}</span><AlertTriangle size={24} className="text-green-400 mb-1"/></div>
+            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.kiCount > 0 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+              <span className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">KI 風險</span>
+              <div className="flex items-end justify-between mt-2"><span className="text-3xl font-black text-green-600 dark:text-green-400">{summary.kiCount}</span><AlertTriangle size={24} className="text-green-400 dark:text-green-500 mb-1"/></div>
             </div>
           </div>
           
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <div className="flex items-center gap-2"><Briefcase size={16} className="text-slate-400"/><h2 className="font-bold text-slate-700 text-sm">{activeClient.name} 的部位</h2></div>
-              <span className="text-xs text-slate-400 bg-white border px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors duration-300">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex justify-between items-center">
+              <div className="flex items-center gap-2"><Briefcase size={16} className="text-slate-400 dark:text-slate-500"/><h2 className="font-bold text-slate-700 dark:text-slate-200 text-sm">{activeClient.name} 的部位</h2></div>
+              <span className="text-xs text-slate-400 dark:text-slate-400 bg-white dark:bg-slate-700 border dark:border-slate-600 px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
             <div className="w-full p-3 md:p-0 overflow-x-auto">
-              <table className="w-full text-left border-collapse block md:table min-w-full md:min-w-[950px]">
-                <thead className="hidden md:table-header-group bg-slate-50 border-b border-slate-200">
-                  <tr className="text-sm text-slate-600 font-bold">
-                    <th className="px-4 py-3 min-w-[260px]">產品資訊</th>
-                    <th className="px-4 py-3 text-center w-44">本金 / 月息</th>
-                    <th className="px-4 py-3 min-w-[480px]">連結標的情況</th>
-                    <th className="px-4 py-3 text-right w-20">操作</th>
+              {/* 🌟 核心修改：移除鎖死寬度的 min-w-[950px]，改用百分比配法 */}
+              <table className="w-full text-left border-collapse block md:table">
+                <thead className="hidden md:table-header-group bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                  <tr className="text-sm text-slate-600 dark:text-slate-400 font-bold">
+                    <th className="px-4 py-3 w-[25%]">產品資訊</th>
+                    <th className="px-4 py-3 text-center w-[15%]">本金 / 月息</th>
+                    <th className="px-4 py-3 w-[50%]">連結標的情況</th>
+                    <th className="px-4 py-3 text-right w-[10%]">操作</th>
                   </tr>
                 </thead>
-                <tbody className="block md:table-row-group md:divide-y md:divide-slate-100">
+                <tbody className="block md:table-row-group md:divide-y md:divide-slate-100 dark:md:divide-slate-700/50">
                   {processedPositions.map((pos) => {
-                      const rowClass = pos.isProductKO ? "bg-red-50 border-red-300 md:border-l-4 md:border-l-red-500" : "bg-white hover:bg-slate-50 border-slate-200";
+                      // KO 時的底色也做黑底適配
+                      const rowClass = pos.isProductKO ? "bg-red-50 dark:bg-red-900/10 border-red-300 dark:border-red-900/50 md:border-l-4 md:border-l-red-500" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/30 border-slate-200 dark:border-slate-700";
                       const todayRenderObj = new Date();
                       const todayRenderStr = `${todayRenderObj.getFullYear()}-${String(todayRenderObj.getMonth() + 1).padStart(2, '0')}-${String(todayRenderObj.getDate()).padStart(2, '0')}`;
                       const nextObsStr = getNextObsDateStr(pos, todayRenderStr);
 
                       return (
                         <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
                             <div className="flex items-center gap-2 mb-2">
-                               <span className={`text-xs px-2 py-0.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}> {pos.currency} </span>
-                               <div className="text-sm md:text-base font-black text-slate-800 break-words md:whitespace-nowrap" title={pos.productName}>{pos.productName}</div>
+                               <span className={`text-xs px-2 py-0.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'}`}> {pos.currency} </span>
+                               <div className="text-sm md:text-base font-black text-slate-800 dark:text-slate-200 break-words md:whitespace-normal" title={pos.productName}>{pos.productName}</div>
                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col md:flex-row gap-1.5 md:gap-3">
                                  <div className="flex flex-wrap gap-2 items-center">
-                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-xs md:text-sm text-slate-600 border border-slate-200 font-medium">{pos.issuer}</span>
-                                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs md:text-sm text-blue-700 font-bold border border-blue-100">年息 {pos.couponRate}%</span>
+                                     <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-xs md:text-sm text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 font-medium">{pos.issuer}</span>
+                                     <span className="bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs md:text-sm text-blue-700 dark:text-blue-300 font-bold border border-blue-100 dark:border-blue-800/50">年息 {pos.couponRate}%</span>
                                  </div>
                             </div>
-                            <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400">
+                            <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400 dark:text-slate-500">
                                 <div className="flex items-center justify-between gap-1 w-full max-w-[200px]">
                                     <span className="flex items-center gap-1"><Clock size={12}/> {pos.maturityDate} 到期</span>
-                                    {/* 點擊鉛筆可以同步修改「下次日期」與「下次門檻」 */}
                                     {pos.koType !== 'Daily' && (
-                                        <div onClick={() => handleOverrideObsDate(pos.id, nextObsStr, pos.currentDynamicKoLevel)} className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition" title="點擊手動修改下次觀察日與門檻">
+                                        <div onClick={() => handleOverrideObsDate(pos.id, nextObsStr, pos.currentDynamicKoLevel)} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-300 transition" title="點擊手動修改下次觀察日與門檻">
                                             <span className="font-bold">下次: {nextObsStr}</span>{!isGuestMode && <Pencil size={10} />}
                                         </div>
                                     )}
@@ -594,64 +621,65 @@ const App = () => {
                             </div>
                           </td>
                           
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto bg-slate-50/50 md:bg-transparent"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto bg-slate-50/50 dark:bg-transparent"> 
                             <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2 w-full">
-                                <span className="md:hidden text-sm font-bold text-slate-500">本金與月息</span>
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:min-w-[120px] h-auto py-2 md:py-3 px-4 md:px-2"> 
-                                    <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 md:pb-2 flex flex-col md:block"> 
-                                        <span className="text-xs text-slate-500 font-bold tracking-widest mb-0.5">本金</span> 
-                                        <div className="text-slate-800 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">{formatToWan(pos.nominal)}<span className="text-xs ml-0.5 font-bold">萬</span></div>
+                                <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-400">本金與月息</span>
+                                <div className="relative overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-auto h-auto py-2 md:py-3 px-4 md:px-2"> 
+                                    <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 dark:border-slate-700 md:pb-2 flex flex-col md:block"> 
+                                        <span className="text-xs text-slate-500 dark:text-slate-400 font-bold tracking-widest mb-0.5">本金</span> 
+                                        <div className="text-slate-800 dark:text-slate-100 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">{formatToWan(pos.nominal)}<span className="text-xs ml-0.5 font-bold">萬</span></div>
                                     </div>
-                                    <div className="h-6 w-px bg-slate-200 md:hidden"></div>
+                                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 md:hidden"></div>
                                     <div className="text-right md:text-center flex-1 md:w-full md:pt-1 flex flex-col md:block">
-                                        <span className="text-xs text-red-600 font-bold tracking-widest mb-0.5">月息</span> 
-                                        <div className="text-red-700 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">{pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}</div>
+                                        <span className="text-xs text-red-600 dark:text-red-400 font-bold tracking-widest mb-0.5">月息</span> 
+                                        <div className="text-red-700 dark:text-red-400 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">{pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}</div>
                                     </div>
                                 </div>
                             </div>
                           </td>
 
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 w-full md:w-auto md:min-w-[520px]"> 
-                            <div className="flex flex-col gap-1 w-full"> 
-                              <span className="md:hidden text-sm font-bold text-slate-500 mb-1">連結標的情況</span>
-                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 font-bold border-b border-slate-200 pb-1 mb-1 px-1 whitespace-nowrap">
-                                  <span className="col-span-2 text-left">標的</span><span className="text-right hidden sm:block">現價</span><span className="text-right text-red-600">KO ({pos.currentDynamicKoLevel}%)</span><span className="text-right text-slate-500">履約</span><span className="text-right text-green-600">KI</span>
+                          {/* 取消 480px 的寫死限制，讓它隨畫面流動 */}
+                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
+                            <div className="flex flex-col gap-1 w-full min-w-0"> 
+                              <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">連結標的情況</span>
+                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 dark:text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 pb-1 mb-1 px-1 whitespace-nowrap">
+                                  <span className="col-span-2 text-left">標的</span><span className="text-right hidden sm:block">現價</span><span className="text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</span><span className="text-right text-slate-500 dark:text-slate-400">履約</span><span className="text-right text-green-600 dark:text-green-500">KI</span>
                               </div>
                               {(pos.underlyingDetails || []).map((u) => {
                                 const isTickerLocked = lockedTickers && lockedTickers.includes(u.ticker);
                                 return (
-                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 border-red-300' : 'hover:bg-slate-50'}`}>
+                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 dark:border-slate-700/50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-800' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
                                     <div className="col-span-2 flex flex-col justify-center min-w-0">
                                         <div className="flex items-center gap-1">
-                                            {!isGuestMode && (<button onClick={() => toggleMemoryKO(pos.id, u.ticker)} className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 border-red-500' : 'border-slate-300 hover:border-blue-400'}`} title="手動標記/取消 KO">{u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}</button>)}
-                                            {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
-                                            <span className={`font-black text-sm md:text-base truncate flex items-center gap-1 ${u.memoryKO ? 'text-red-700' : 'text-slate-800'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-[10px]" title="此標的已強制手動鎖定報價，不受 API 自動干擾">🔒</span>}</span>
+                                            {!isGuestMode && (<button onClick={() => toggleMemoryKO(pos.id, u.ticker)} className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 dark:bg-red-600 border-red-500 dark:border-red-600' : 'border-slate-300 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500'}`} title="手動標記/取消 KO">{u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}</button>)}
+                                            {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 dark:bg-red-600 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
+                                            <span className={`font-black text-sm md:text-base truncate flex items-center gap-1 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-[10px]" title="此標的已強制手動鎖定報價，不受 API 自動干擾">🔒</span>}</span>
                                         </div>
-                                        <span className={`sm:hidden font-mono font-black text-xs whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{u.currentPrice.toLocaleString()}</span>
-                                        {u.name && <span className="text-xs text-slate-400 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                        <span className={`sm:hidden font-mono font-black text-xs whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{u.currentPrice.toLocaleString()}</span>
+                                        {u.name && <span className="text-xs text-slate-400 dark:text-slate-500 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
-                                    <span className={`hidden sm:block font-mono font-black text-right text-sm md:text-base whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600' : 'text-red-600'}`}>{u.currentPrice.toLocaleString()}</span>
-                                    <span className="font-mono font-bold text-red-700 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.koPrice).toLocaleString()}</span>
-                                    <span className="font-mono text-slate-500 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.strikePrice).toLocaleString()}</span>
-                                    <span className="font-mono font-bold text-green-700 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.kiPrice).toLocaleString()}</span>
+                                    <span className={`hidden sm:block font-mono font-black text-right text-sm md:text-base whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{u.currentPrice.toLocaleString()}</span>
+                                    <span className="font-mono font-bold text-red-700 dark:text-red-400 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.koPrice).toLocaleString()}</span>
+                                    <span className="font-mono text-slate-500 dark:text-slate-400 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.strikePrice).toLocaleString()}</span>
+                                    <span className="font-mono font-bold text-green-700 dark:text-green-500 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.kiPrice).toLocaleString()}</span>
                                   </div>
                                 );
                               })}
                             </div>
                           </td>
 
-                          <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 md:bg-transparent w-full md:w-auto"> 
+                          <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 dark:bg-transparent w-full md:w-auto"> 
                             {!isGuestMode && (
                                 <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-blue-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-blue-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位"><Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span></button>
-                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 hover:text-red-600 px-3 py-2 md:p-2 border md:border-0 border-slate-200 bg-white md:bg-transparent hover:bg-red-50 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位"><Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span></button>
+                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 md:p-2 border md:border-0 border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位"><Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span></button>
+                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 px-3 py-2 md:p-2 border md:border-0 border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位"><Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span></button>
                                 </div>
                             )}
                           </td>
                         </tr>
                       );
                   })}
-                  {processedPositions.length === 0 && (<tr className="block md:table-row"><td colSpan="6" className="block md:table-cell px-6 py-12 text-center text-slate-400 w-full">目前沒有部位，請點擊右上角「新增」</td></tr>)}
+                  {processedPositions.length === 0 && (<tr className="block md:table-row"><td colSpan="6" className="block md:table-cell px-6 py-12 text-center text-slate-400 dark:text-slate-500 w-full">目前沒有部位，請點擊右上角「新增」</td></tr>)}
                 </tbody>
               </table>
             </div>
@@ -659,6 +687,7 @@ const App = () => {
         </div>
       </main>
 
+      {/* 彈出視窗：您可以先體驗主畫面的黑底，如果您喜歡，我們下一步可以幫這些小視窗也換上黑底的皮！ */}
       <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} lockedTickers={lockedTickers} setLockedTickers={setLockedTickers} />
       <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />
       <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} isGeneratingShareLink={isGeneratingShareLink} />
