@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, TrendingUp, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, Eye, Coins, User, Briefcase, Check, FileText, Pencil, Lock, Unlock, Settings as SettingsIcon, Share2, ArrowRightLeft, Loader } from 'lucide-react';
 
-// 模組化匯入：常數與工具函數
 import { DEFAULT_CLIENTS, INITIAL_POSITIONS, DEFAULT_MARKET_PRICES, DEFAULT_FORM_STATE } from './utils/constants';
 import { normalizeTicker, formatToWan } from './utils/helpers';
 
-// 模組化匯入：各類彈出視窗與頁面
 import { LandingPage } from './components/LandingPage';
 import { AddPositionModal } from './components/modals/AddPositionModal';
 import { DataSyncModal } from './components/modals/DataSyncModal';
@@ -48,7 +46,7 @@ const App = () => {
   const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState(false); 
 
   const [editId, setEditId] = useState(null);
-  const [formPosition, setFormPosition] = useState(DEFAULT_FORM_STATE);
+  const [formPosition, setFormPosition] = useState({ ...DEFAULT_FORM_STATE, customSchedule: [] });
   const [formUnderlyings, setFormUnderlyings] = useState([{ id: Date.now(), ticker: "", entryPrice: 0 }]);
 
   const getPriceForTicker = (ticker) => {
@@ -59,7 +57,17 @@ const App = () => {
     return undefined;
   };
 
+  // 🌟 核心更新：支援自訂排程與手動強制覆蓋 KO%
   const getDynamicKoLevel = (pos, targetDateStr) => {
+      if (pos.manualNextObsDate && pos.manualKoLevel) return pos.manualKoLevel;
+
+      if (pos.koType === 'Custom') {
+          if (!pos.customSchedule || pos.customSchedule.length === 0) return pos.koLevel;
+          const upcoming = pos.customSchedule.find(s => s.date >= targetDateStr);
+          if (upcoming) return upcoming.koLevel;
+          return pos.customSchedule[pos.customSchedule.length - 1].koLevel;
+      }
+
       if (pos.koType !== 'Monthly' || !pos.koObservationStartDate) return pos.koLevel;
       if (targetDateStr <= pos.koObservationStartDate) return pos.koLevel;
 
@@ -72,7 +80,6 @@ const App = () => {
           else if (candidate.getDay() === 0) candidate.setDate(candidate.getDate() + 1);
           
           const candidateStr = `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')}`;
-          
           if (targetDateStr <= candidateStr) { stepDowns = i; break; }
       }
       return pos.koLevel - (stepDowns * (pos.stepDownRate || 0));
@@ -80,6 +87,13 @@ const App = () => {
 
   const getNextObsDateStr = (pos, targetDateStr) => {
       if (pos.manualNextObsDate) return pos.manualNextObsDate;
+      
+      if (pos.koType === 'Custom') {
+          if (!pos.customSchedule || pos.customSchedule.length === 0) return "未設定";
+          const upcoming = pos.customSchedule.find(s => s.date >= targetDateStr);
+          return upcoming ? upcoming.date : "已結束";
+      }
+
       if (pos.koType !== 'Monthly') {
           return targetDateStr >= pos.koObservationStartDate ? targetDateStr : pos.koObservationStartDate;
       }
@@ -241,7 +255,10 @@ const App = () => {
 
           if (posUpdated) {
               let finalPos = { ...pos, underlyings: newUnderlyings };
-              if (pos.manualNextObsDate && todayStr >= pos.manualNextObsDate) finalPos.manualNextObsDate = "";
+              if (pos.manualNextObsDate && todayStr >= pos.manualNextObsDate) {
+                  finalPos.manualNextObsDate = "";
+                  finalPos.manualKoLevel = null;
+              }
               return finalPos;
           }
           return pos;
@@ -259,10 +276,18 @@ const App = () => {
       });
   };
 
-  const handleOverrideObsDate = (id, currentStr) => {
+  // 🌟 核心更新：鉛筆圖示可以同步覆蓋 KO %
+  const handleOverrideObsDate = (id, currentStr, currentLevel) => {
       checkAuth(() => {
-          const val = prompt("✏️ 請設定下一次觀察日 (格式: YYYY-MM-DD)\n若要恢復系統自動計算，請清空內容並按確認。", currentStr);
-          if (val !== null) setAllPositions(prev => prev.map(p => p.id === id ? { ...p, manualNextObsDate: val.trim() } : p));
+          const dateVal = prompt("✏️ 請設定下一次觀察日 (格式: YYYY-MM-DD)\n若要恢復系統自動計算，請清空內容並按確認。", currentStr);
+          if (dateVal !== null) {
+              const levelVal = dateVal.trim() !== "" ? prompt(`✏️ 請設定 ${dateVal} 的 KO 門檻 (%)\n(目前自動推算為 ${currentLevel}%)`, currentLevel) : "";
+              setAllPositions(prev => prev.map(p => p.id === id ? { 
+                  ...p, 
+                  manualNextObsDate: dateVal.trim(),
+                  manualKoLevel: levelVal && levelVal.trim() !== "" ? parseFloat(levelVal) : null
+              } : p));
+          }
       });
   };
 
@@ -366,6 +391,7 @@ const App = () => {
       if(newClients.length > 0 && !newClients.find(c => c.id === activeClientId)) setActiveClientId(newClients[0].id);
   };
 
+  // 🌟 儲存時把 Custom Schedule 也存進去
   const handleSavePosition = (e) => {
     e.preventDefault();
     const validUnderlyings = formUnderlyings.filter(u => u.ticker.trim() !== "").map(u => ({ ticker: u.ticker.toUpperCase(), entryPrice: parseFloat(u.entryPrice), memoryKO: u.memoryKO || false }));
@@ -375,11 +401,17 @@ const App = () => {
     setMarketPrices(updatedPrices);
     const tickersStr = validUnderlyings.map(u => u.ticker).join('/');
     
+    const validCustomSchedule = (formPosition.customSchedule || [])
+      .filter(s => s.date && s.koLevel !== "")
+      .map(s => ({ id: s.id || Date.now(), date: s.date, koLevel: parseFloat(s.koLevel) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
     const entryData = {
       clientId: activeClientId, productName: formPosition.productName || `FCN ${tickersStr}`, issuer: formPosition.issuer || "Self", 
       nominal: parseFloat(formPosition.nominal), currency: formPosition.currency, couponRate: parseFloat(formPosition.couponRate), 
       strikeDate: formPosition.strikeDate, koObservationStartDate: formPosition.koObservationStartDate, maturityDate: formPosition.maturityDate, tenor: formPosition.tenor, 
-      koLevel: parseFloat(formPosition.koLevel), kiLevel: parseFloat(formPosition.kiLevel), strikeLevel: parseFloat(formPosition.strikeLevel), koType: formPosition.koType || "Daily", stepDownRate: parseFloat(formPosition.stepDownRate || 0), underlyings: validUnderlyings, status: "Active"
+      koLevel: parseFloat(formPosition.koLevel), kiLevel: parseFloat(formPosition.kiLevel), strikeLevel: parseFloat(formPosition.strikeLevel), koType: formPosition.koType || "Daily", stepDownRate: parseFloat(formPosition.stepDownRate || 0), 
+      underlyings: validUnderlyings, status: "Active", customSchedule: validCustomSchedule
     };
     if (editId) setAllPositions(prev => prev.map(p => p.id === editId ? { ...entryData, id: editId } : p));
     else setAllPositions(prev => [...prev, { ...entryData, id: Date.now() }]);
@@ -401,13 +433,14 @@ const App = () => {
 
   const handleExitGuestMode = () => { if(confirm("確定要登出嗎？")) { setIsGuestMode(false); setGuestData(null); setViewMode('landing'); window.history.replaceState(null, '', window.location.pathname); } };
   
-  const handleOpenAddModal = () => { checkAuth(() => { setEditId(null); setFormPosition(DEFAULT_FORM_STATE); setFormUnderlyings([{ id: Date.now(), ticker: "", entryPrice: 0 }]); setIsAddModalOpen(true); }); };
+  const handleOpenAddModal = () => { checkAuth(() => { setEditId(null); setFormPosition({ ...DEFAULT_FORM_STATE, customSchedule: [] }); setFormUnderlyings([{ id: Date.now(), ticker: "", entryPrice: 0 }]); setIsAddModalOpen(true); }); };
   const handleOpenEditModal = (pos) => { checkAuth(() => { 
       setEditId(pos.id); 
       setFormPosition({ 
           productName: pos.productName || "", issuer: pos.issuer || "", nominal: pos.nominal || 0, currency: pos.currency || "USD", couponRate: pos.couponRate || 0, 
           koLevel: pos.koLevel || 100, kiLevel: pos.kiLevel || 70, strikeLevel: pos.strikeLevel || 100, strikeDate: pos.strikeDate || "", 
-          koObservationStartDate: pos.koObservationStartDate || "", tenor: pos.tenor || "", maturityDate: pos.maturityDate || "", koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0, manualNextObsDate: pos.manualNextObsDate || ""
+          koObservationStartDate: pos.koObservationStartDate || "", tenor: pos.tenor || "", maturityDate: pos.maturityDate || "", koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0, manualNextObsDate: pos.manualNextObsDate || "",
+          customSchedule: (pos.customSchedule || []).map(s => ({ ...s, id: s.id || Date.now() + Math.random() }))
       }); 
       setFormUnderlyings((pos.underlyings || []).map((u, idx) => ({ ticker: u.ticker || "", entryPrice: u.entryPrice || 0, memoryKO: u.memoryKO || false, id: Date.now() + idx }))); 
       setIsAddModalOpen(true); 
@@ -551,8 +584,9 @@ const App = () => {
                             <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400">
                                 <div className="flex items-center justify-between gap-1 w-full max-w-[200px]">
                                     <span className="flex items-center gap-1"><Clock size={12}/> {pos.maturityDate} 到期</span>
-                                    {pos.koType === 'Monthly' && (
-                                        <div onClick={() => handleOverrideObsDate(pos.id, nextObsStr)} className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition" title="點擊手動修改下次觀察日">
+                                    {/* 點擊鉛筆可以同步修改「下次日期」與「下次門檻」 */}
+                                    {pos.koType !== 'Daily' && (
+                                        <div onClick={() => handleOverrideObsDate(pos.id, nextObsStr, pos.currentDynamicKoLevel)} className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition" title="點擊手動修改下次觀察日與門檻">
                                             <span className="font-bold">下次: {nextObsStr}</span>{!isGuestMode && <Pencil size={10} />}
                                         </div>
                                     )}
@@ -625,7 +659,6 @@ const App = () => {
         </div>
       </main>
 
-      {/* 模組化後的 Modals 區塊 */}
       <DataSyncModal isOpen={isDataSyncModalOpen} onClose={() => setIsDataSyncModalOpen(false)} marketPrices={marketPrices} setMarketPrices={setMarketPrices} setLastUpdated={setLastUpdated} googleSheetId={googleSheetId} setGoogleSheetId={setGoogleSheetId} onSyncPortfolio={handleSyncPortfolio} portfolioSheetUrl={portfolioSheetUrl} setPortfolioSheetUrl={setPortfolioSheetUrl} fetchWithFallback={fetchWithFallback} lockedTickers={lockedTickers} setLockedTickers={setLockedTickers} />
       <AddPositionModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleSavePosition} newPosition={formPosition} setNewPosition={setFormPosition} tempUnderlyings={formUnderlyings} setTempUnderlyings={setFormUnderlyings} isEdit={!!editId} />
       <ClientManagerModal isOpen={isClientManagerOpen} onClose={() => setIsClientManagerOpen(false)} clients={clients} onAdd={handleAddClient} onDelete={handleDeleteClient} activeId={activeClientId} onGenerateShareLink={handleGenerateShareLink} isGeneratingShareLink={isGeneratingShareLink} />

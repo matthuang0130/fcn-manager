@@ -8,6 +8,11 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
   const removeU = (id) => setTempUnderlyings(tempUnderlyings.filter(u => u.id !== id));
   const updateU = (id, f, v) => setTempUnderlyings(tempUnderlyings.map(u => u.id === id ? { ...u, [f]: v } : u));
 
+  // 自訂排程的操作函數
+  const addCS = () => setNewPosition({ ...newPosition, customSchedule: [...(newPosition.customSchedule || []), { id: Date.now(), date: "", koLevel: 100 }] });
+  const removeCS = (id) => setNewPosition({ ...newPosition, customSchedule: (newPosition.customSchedule || []).filter(s => s.id !== id) });
+  const updateCS = (id, f, v) => setNewPosition({ ...newPosition, customSchedule: (newPosition.customSchedule || []).map(s => s.id === id ? { ...s, [f]: v } : s) });
+
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center z-50 p-4 overflow-y-auto items-start pt-10 sm:items-center sm:pt-0">
       <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full p-5 mb-10 animate-in fade-in zoom-in duration-200">
@@ -57,7 +62,8 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
                      <label className="text-sm font-bold text-slate-500">觀察頻率</label>
                      <select className="w-full border rounded px-2 py-1 text-sm font-bold text-blue-600 bg-white" value={newPosition.koType || "Daily"} onChange={e=>setNewPosition({...newPosition, koType:e.target.value})}>
                         <option value="Daily">天天觀察</option>
-                        <option value="Monthly">每月觀察 (逐月遞減)</option>
+                        <option value="Monthly">每月遞減 (自動推算)</option>
+                        <option value="Custom">完全自訂 (手動排程)</option>
                      </select>
                  </div>
                  {newPosition.koType === 'Monthly' && (
@@ -67,10 +73,38 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
                      </div>
                  )}
              </div>
+
+             {/* 🌟 核心新增：自訂排程區塊 */}
+             {newPosition.koType === 'Custom' && (
+                 <div className="col-span-1 sm:col-span-2 md:col-span-4 mt-2 p-3 bg-white border border-purple-200 rounded-lg shadow-sm">
+                    <div className="flex justify-between items-center mb-2">
+                       <label className="text-sm font-bold text-purple-700">自訂觀察日排程 (對照條件書)</label>
+                       <button type="button" onClick={addCS} className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200">+ 新增觀察日</button>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                       {(newPosition.customSchedule || []).map((item, idx) => (
+                          <div key={item.id} className="flex gap-2 items-center">
+                             <span className="text-xs text-slate-400 w-4">{idx + 1}.</span>
+                             <input type="date" value={item.date} onChange={e => updateCS(item.id, 'date', e.target.value)} className="w-1/2 border rounded px-2 py-1 text-sm focus:ring-2 focus:ring-purple-500 outline-none" required/>
+                             <div className="w-1/2 flex gap-2 items-center">
+                                <input type="number" step="0.1" value={item.koLevel} onChange={e => updateCS(item.id, 'koLevel', e.target.value)} placeholder="KO 門檻 %" className="w-full border rounded px-2 py-1 text-sm font-bold text-red-600 focus:ring-2 focus:ring-purple-500 outline-none" required/>
+                                <button type="button" onClick={() => removeCS(item.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={16}/></button>
+                             </div>
+                          </div>
+                       ))}
+                       {(!newPosition.customSchedule || newPosition.customSchedule.length === 0) && (
+                           <p className="text-xs text-slate-400 text-center py-2">尚未新增任何觀察日，請點擊右上方新增。</p>
+                       )}
+                    </div>
+                 </div>
+             )}
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-             <div><label className="text-sm text-slate-500">KO 觀察(起)日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.koObservationStartDate} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/></div>
+             <div>
+                <label className="text-sm text-slate-500">{newPosition.koType === 'Custom' ? '商品生效日' : 'KO 觀察(起)日'}</label>
+                <input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.koObservationStartDate} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/>
+             </div>
              <div><label className="text-sm text-slate-500">到期日</label><input type="date" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.maturityDate} onChange={e=>setNewPosition({...newPosition, maturityDate:e.target.value})}/></div>
              <div><label className="text-sm text-slate-500">存續期</label><input type="text" className="w-full border rounded px-2 py-1 text-sm" value={newPosition.tenor} onChange={e=>setNewPosition({...newPosition, tenor:e.target.value})}/></div>
           </div>
@@ -86,7 +120,7 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
             ))}
           </div>
 
-          <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold text-sm">
+          <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold text-sm shadow-md active:scale-95 transition">
             {isEdit ? '確認修改' : '建立部位'}
           </button>
         </form>
