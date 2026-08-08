@@ -244,6 +244,7 @@ const App = () => {
       }
   };
 
+  // 🌟 核心修正：加入舊日期自動補零與過期強制重置邏輯
   useEffect(() => {
       const todayObj = new Date();
       const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
@@ -251,12 +252,22 @@ const App = () => {
       
       const updatedPositions = allPositions.map(pos => {
           let posUpdated = false;
-          const currentDynamicKoLevel = getDynamicKoLevel(pos, todayStr);
-          const nextObsStr = getNextObsDateStr(pos, todayStr);
-          const isObsDay = (todayStr === nextObsStr);
-          const hasStarted = !pos.koObservationStartDate || todayStr >= pos.koObservationStartDate;
+          let finalPos = { ...pos };
 
-          const newUnderlyings = pos.underlyings.map(u => {
+          // 防呆：自動幫使用者過去輸入缺少 0 的日期補零 (例如 2026-08-7 轉為 2026-08-07)
+          if (finalPos.manualNextObsDate) {
+              const p = finalPos.manualNextObsDate.split('-');
+              if (p.length === 3) finalPos.manualNextObsDate = `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}`;
+          }
+
+          const currentDynamicKoLevel = getDynamicKoLevel(finalPos, todayStr);
+          const nextObsStr = getNextObsDateStr(finalPos, todayStr);
+          
+          // 修正判斷：當天或是「卡在過去的手動日期」都應該觸發檢查
+          const isObsDay = (todayStr === nextObsStr) || (finalPos.manualNextObsDate && todayStr >= finalPos.manualNextObsDate);
+          const hasStarted = !finalPos.koObservationStartDate || todayStr >= finalPos.koObservationStartDate;
+
+          const newUnderlyings = finalPos.underlyings.map(u => {
               if (u.memoryKO) return u; 
               const marketPrice = getPriceForTicker(u.ticker);
               const currentPrice = marketPrice !== undefined ? marketPrice : u.entryPrice;
@@ -269,15 +280,17 @@ const App = () => {
               return u;
           });
 
-          if (posUpdated) {
-              let finalPos = { ...pos, underlyings: newUnderlyings };
-              if (pos.manualNextObsDate && todayStr >= pos.manualNextObsDate) {
-                  finalPos.manualNextObsDate = "";
-                  finalPos.manualKoLevel = null;
-              }
-              return finalPos;
+          finalPos.underlyings = newUnderlyings;
+
+          // 核心修復：只要今天已經超過了手動日期，無論有沒有發生 KO，都要強制清空手動日期，讓系統回歸自動排程！
+          if (finalPos.manualNextObsDate && todayStr > finalPos.manualNextObsDate) {
+              finalPos.manualNextObsDate = "";
+              finalPos.manualKoLevel = null;
+              posUpdated = true;
+              hasUpdates = true;
           }
-          return pos;
+
+          return posUpdated ? finalPos : pos;
       });
 
       if (hasUpdates) setAllPositions(updatedPositions);
@@ -296,10 +309,18 @@ const App = () => {
       checkAuth(() => {
           const dateVal = prompt("✏️ 請設定下一次觀察日 (格式: YYYY-MM-DD)\n若要恢復系統自動計算，請清空內容並按確認。", currentStr);
           if (dateVal !== null) {
-              const levelVal = dateVal.trim() !== "" ? prompt(`✏️ 請設定 ${dateVal} 的 KO 門檻 (%)\n(目前自動推算為 ${currentLevel}%)`, currentLevel) : "";
+              let cleanDate = dateVal.trim();
+              
+              // 🌟 防呆：在使用者輸入時主動幫單數月、單數日補上 '0'
+              if (cleanDate) {
+                  const parts = cleanDate.split('-');
+                  if (parts.length === 3) cleanDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+              }
+
+              const levelVal = cleanDate !== "" ? prompt(`✏️ 請設定 ${cleanDate} 的 KO 門檻 (%)\n(目前自動推算為 ${currentLevel}%)`, currentLevel) : "";
               setAllPositions(prev => prev.map(p => p.id === id ? { 
                   ...p, 
-                  manualNextObsDate: dateVal.trim(),
+                  manualNextObsDate: cleanDate,
                   manualKoLevel: levelVal && levelVal.trim() !== "" ? parseFloat(levelVal) : null
               } : p));
           }
@@ -355,7 +376,6 @@ const App = () => {
     });
     const monthlyCoupon = Math.round((pos.nominal * (pos.couponRate / 100)) / 12);
     
-    // 🌟 狀態標籤文字提亮 (藍色/綠色/橘色字體更鮮明)
     let riskStatus = "觀察中", statusColor = "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800/50"; 
     
     if (allTouchedKO) { riskStatus = "達成 KO"; statusColor = "bg-red-600 dark:bg-red-600 text-white font-bold border border-red-700 shadow-sm animate-pulse"; } 
@@ -535,7 +555,6 @@ const App = () => {
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 group-hover:opacity-20 transition-opacity"><DollarSign size={48} className="text-slate-400"/></div>
                 <div className="relative z-10">
-                    {/* 🌟 提亮卡片小標籤為 slate-200 */}
                     <div className="text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-1">USD 資產總覽</div>
                     <div className="flex flex-col gap-1">
                         <div className="flex items-baseline gap-1"><span className="text-2xl font-black text-slate-800 dark:text-white">${(summary.usd.nominal/10000).toFixed(0)}</span><span className="text-sm font-bold text-slate-600 dark:text-slate-200">萬</span><span className="text-xs text-slate-400 dark:text-slate-300 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
@@ -575,7 +594,6 @@ const App = () => {
             <div className="w-full p-3 md:p-0 overflow-x-auto">
               <table className="w-full text-left border-collapse block md:table">
                 <thead className="hidden md:table-header-group bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                  {/* 🌟 表頭文字提亮為 slate-200 */}
                   <tr className="text-sm text-slate-600 dark:text-slate-200 font-bold">
                     <th className="px-4 py-3 w-[25%]">產品資訊</th>
                     <th className="px-4 py-3 text-center w-[15%]">本金 / 月息</th>
@@ -604,7 +622,6 @@ const App = () => {
                                      <span className="bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded text-xs md:text-sm text-blue-700 dark:text-blue-200 font-bold border border-blue-100 dark:border-blue-800/50">年息 {pos.couponRate}%</span>
                                  </div>
                             </div>
-                            {/* 🌟 提亮到期日小字為 slate-300 */}
                             <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400 dark:text-slate-300">
                                 <div className="flex items-center justify-between gap-1 w-full max-w-[200px]">
                                     <span className="flex items-center gap-1"><Clock size={12}/> {pos.maturityDate} 到期</span>
@@ -619,10 +636,9 @@ const App = () => {
                           
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto bg-slate-50/50 dark:bg-transparent"> 
                             <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2 w-full">
-                                <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-200">本金與月息</span>
+                                <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-300">本金與月息</span>
                                 <div className="relative overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-auto h-auto py-2 md:py-3 px-4 md:px-2"> 
                                     <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 dark:border-slate-700 md:pb-2 flex flex-col md:block"> 
-                                        {/* 🌟 提亮「本金」標籤為 slate-300 */}
                                         <span className="text-xs text-slate-500 dark:text-slate-300 font-bold tracking-widest mb-0.5">本金</span> 
                                         <div className="text-slate-800 dark:text-white font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">{formatToWan(pos.nominal)}<span className="text-xs ml-0.5 font-bold text-slate-600 dark:text-slate-300">萬</span></div>
                                     </div>
@@ -638,7 +654,6 @@ const App = () => {
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
                             <div className="flex flex-col gap-1 w-full min-w-0"> 
                               <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-200 mb-1">連結標的情況</span>
-                              {/* 🌟 提亮股票標籤列為 slate-200 */}
                               <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-1 mb-1 px-1 whitespace-nowrap">
                                   <span className="col-span-2 text-left">標的</span><span className="text-right hidden sm:block">現價</span><span className="text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</span><span className="text-right text-slate-500 dark:text-slate-200">履約</span><span className="text-right text-green-600 dark:text-green-400">KI</span>
                               </div>
@@ -657,7 +672,6 @@ const App = () => {
                                     </div>
                                     <span className={`hidden sm:block font-mono font-black text-right text-sm md:text-base whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{u.currentPrice.toLocaleString()}</span>
                                     <span className="font-mono font-bold text-red-700 dark:text-red-400 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.koPrice).toLocaleString()}</span>
-                                    {/* 🌟 履約價數字也提亮為 slate-300 */}
                                     <span className="font-mono text-slate-500 dark:text-slate-300 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.strikePrice).toLocaleString()}</span>
                                     <span className="font-mono font-bold text-green-700 dark:text-green-400 text-right text-sm md:text-base whitespace-nowrap">{Math.round(u.kiPrice).toLocaleString()}</span>
                                   </div>
