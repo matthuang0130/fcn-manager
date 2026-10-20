@@ -5,6 +5,12 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+// 🌟 保留最多 3 位小數的價格格式化工具
+const formatStockPrice = (price) => {
+    if (price === undefined || price === null) return '-';
+    return Number(price).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+};
+
 async function fetchPrice(ticker) {
     try {
         const cleanTicker = ticker.replace("TYO:", "").replace("JP:", "").replace(".T", "").trim();
@@ -139,9 +145,17 @@ export default async function handler(req, res) {
         }
 
         const updatedPositions = data.positions.map(pos => {
+            // 🌟 核心防呆：自動補零邏輯
+            if (pos.manualNextObsDate) {
+                const p = pos.manualNextObsDate.split('-');
+                if (p.length === 3) pos.manualNextObsDate = `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}`;
+            }
+
             const currentDynamicKoLevel = getDynamicKoLevel(pos, evalDateStr);
             const nextObsStr = getNextObsDateStr(pos, evalDateStr);
-            const isObsDay = (evalDateStr === nextObsStr);
+            
+            // 🌟 修正判斷條件：只要時間超過手動日期，就視為觸發日
+            const isObsDay = (evalDateStr === nextObsStr) || (pos.manualNextObsDate && evalDateStr >= pos.manualNextObsDate);
             const hasStarted = !pos.koObservationStartDate || evalDateStr >= pos.koObservationStartDate;
             
             let anyNewKO = false;
@@ -160,13 +174,26 @@ export default async function handler(req, res) {
                 const clientName = data.clients.find(c => c.id === pos.clientId)?.name || '未知客戶';
                 if (isFullyKO) koAlerts.push(`🎉 FCN 提早結算 (全數 KO)！\n客戶：${clientName}\n產品：${pos.productName}\n本次門檻：${currentDynamicKoLevel}%`);
                 else {
-                    const newlyKod = newUnderlyings.filter((u, i) => u.memoryKO && !pos.underlyings[i].memoryKO).map(u => u.ticker).join(', ');
+                    // 🌟 針對新觸發的標的，計算並格式化當前 KO 價格
+                    const newlyKod = newUnderlyings
+                        .map((u, i) => {
+                            if (u.memoryKO && !pos.underlyings[i].memoryKO) {
+                                const targetKoPrice = u.entryPrice * (currentDynamicKoLevel / 100);
+                                return `${u.ticker} (達 ${formatStockPrice(targetKoPrice)})`;
+                            }
+                            return null;
+                        })
+                        .filter(u => u !== null)
+                        .join(', ');
+
                     koAlerts.push(`🔔 FCN 個股觸價紀錄\n客戶：${clientName}\n產品：${pos.productName}\n本次達標：${newlyKod}\n當次門檻：${currentDynamicKoLevel}%`);
                 }
             }
 
             let updatedPos = { ...pos, underlyings: newUnderlyings };
-            if (pos.manualNextObsDate && evalDateStr >= pos.manualNextObsDate) {
+            
+            // 🌟 強制過期清理邏輯
+            if (pos.manualNextObsDate && evalDateStr > pos.manualNextObsDate) {
                 updatedPos.manualNextObsDate = "";
                 updatedPos.manualKoLevel = null;
             }
