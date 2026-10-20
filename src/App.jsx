@@ -76,9 +76,11 @@ const App = () => {
     return undefined;
   };
 
-  const formatStockPrice = (price) => {
+  // 🌟 幣別智慧辨識：日圓最多 1 位小數，美元維持 3 位
+  const formatStockPrice = (price, currency = 'USD') => {
       if (price === undefined || price === null) return '-';
-      return Number(price).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+      const maxDecimals = currency === 'JPY' ? 1 : 3;
+      return Number(price).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: maxDecimals });
   };
 
   const getDynamicKoLevel = (pos, targetDateStr) => {
@@ -687,8 +689,8 @@ const App = () => {
                             <div className="flex flex-col gap-1 w-full min-w-0"> 
                               <span className="md:hidden text-base font-bold text-slate-500 dark:text-slate-200 mb-2">連結標的情況</span>
                               
-                              {/* 🌟 核心修復：放棄容易變形的 Grid，改用精準 % 的 Flexbox 彈性排版，不擠壓數字且字體放大 */}
-                              <div className="flex items-center text-[12px] sm:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-2 md:pb-1 mb-2 md:mb-1 px-1 whitespace-nowrap">
+                              {/* 🌟 縮小手機版數字的字級 (text-[11px])，保留足夠間距 */}
+                              <div className="flex items-center text-[11px] sm:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-2 md:pb-1 mb-2 md:mb-1 px-1 whitespace-nowrap">
                                   <div className="w-[28%] sm:w-[25%] text-left">標的</div>
                                   <div className="hidden sm:block sm:w-[15%] text-right">現價</div>
                                   <div className="w-[24%] sm:w-[20%] text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</div>
@@ -706,13 +708,14 @@ const App = () => {
                                             {isGuestMode && u.memoryKO && <div className="shrink-0 w-4 h-4 md:w-3 md:h-3 bg-red-500 dark:bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={10} className="text-white md:w-[8px] md:h-[8px]"/></div>}
                                             <span className={`font-black text-[13px] sm:text-sm truncate flex items-center gap-0.5 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-xs md:text-[10px]" title="手動鎖定報價中">🔒</span>}</span>
                                         </div>
-                                        <span className={`sm:hidden font-mono font-bold text-[12px] whitespace-nowrap mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice)}</span>
+                                        {/* 🌟 帶入 pos.currency 以啟用日圓智慧捨去小數點 */}
+                                        <span className={`sm:hidden font-mono font-bold text-[11px] whitespace-nowrap mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice, pos.currency)}</span>
                                         {u.name && <span className="text-[10px] md:text-xs text-slate-400 dark:text-slate-300 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
-                                    <span className={`hidden sm:block sm:w-[15%] font-mono font-bold text-right text-xs md:text-sm whitespace-nowrap px-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice)}</span>
-                                    <span className="w-[24%] sm:w-[20%] font-mono font-bold text-red-700 dark:text-red-400 text-right text-[12px] sm:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.koPrice)}</span>
-                                    <span className="w-[24%] sm:w-[20%] font-mono text-slate-500 dark:text-slate-300 text-right text-[12px] sm:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.strikePrice)}</span>
-                                    <span className="w-[24%] sm:w-[20%] font-mono font-bold text-green-700 dark:text-green-400 text-right text-[12px] sm:text-sm whitespace-nowrap pl-0.5">{formatStockPrice(u.kiPrice)}</span>
+                                    <span className={`hidden sm:block sm:w-[15%] font-mono font-bold text-right text-xs md:text-sm whitespace-nowrap px-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice, pos.currency)}</span>
+                                    <span className="w-[24%] sm:w-[20%] font-mono font-bold text-red-700 dark:text-red-400 text-right text-[11px] sm:text-sm whitespace-nowrap">{formatStockPrice(u.koPrice, pos.currency)}</span>
+                                    <span className="w-[24%] sm:w-[20%] font-mono text-slate-500 dark:text-slate-300 text-right text-[11px] sm:text-sm whitespace-nowrap">{formatStockPrice(u.strikePrice, pos.currency)}</span>
+                                    <span className="w-[24%] sm:w-[20%] font-mono font-bold text-green-700 dark:text-green-400 text-right text-[11px] sm:text-sm whitespace-nowrap pl-0.5">{formatStockPrice(u.kiPrice, pos.currency)}</span>
                                   </div>
                                 );
                               })}
