@@ -688,33 +688,34 @@ const App = () => {
                             <div className="flex flex-col gap-1 w-full min-w-0"> 
                               <span className="md:hidden text-base font-bold text-slate-500 dark:text-slate-200 mb-2">連結標的情況</span>
                               
-                              {/* 🌟 放棄極小字，改用自動換行的堆疊或加大字體 */}
-                              <div className="flex items-center text-xs sm:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-2 md:pb-1 mb-2 md:mb-1 px-1 whitespace-nowrap">
-                                  <div className="w-[25%] sm:w-[25%] text-left">標的</div>
+                              {/* 🌟 修改點 1：將 KO 與 履約 改為 text-center 置中，這會讓 KO 往左靠，填補空白 */}
+                              <div className="flex items-center text-[12px] sm:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-2 md:pb-1 mb-2 md:mb-1 px-1 whitespace-nowrap">
+                                  <div className="w-[28%] sm:w-[25%] text-left">標的</div>
                                   <div className="hidden sm:block sm:w-[15%] text-right">現價</div>
-                                  <div className="w-[25%] sm:w-[20%] text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</div>
-                                  <div className="w-[25%] sm:w-[20%] text-right text-slate-500 dark:text-slate-200">履約</div>
-                                  <div className="w-[25%] sm:w-[20%] text-right text-green-600 dark:text-green-400">KI</div>
+                                  <div className="w-[24%] sm:w-[20%] text-center sm:text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</div>
+                                  <div className="w-[24%] sm:w-[20%] text-center sm:text-right text-slate-500 dark:text-slate-200">履約</div>
+                                  <div className="w-[24%] sm:w-[20%] text-right text-green-600 dark:text-green-400">KI</div>
                               </div>
 
                               {(pos.underlyingDetails || []).map((u) => {
                                 const isTickerLocked = lockedTickers && lockedTickers.includes(u.ticker);
                                 return (
                                   <div key={u.ticker} className={`flex items-center border-b border-slate-50 dark:border-slate-700/50 last:border-0 py-2 md:py-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-800' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                                    <div className="w-[25%] sm:w-[25%] flex flex-col justify-center min-w-0 pr-1">
+                                    <div className="w-[28%] sm:w-[25%] flex flex-col justify-center min-w-0 pr-1">
                                         <div className="flex items-center gap-1.5 md:gap-1">
                                             {!isGuestMode && (<button onClick={() => toggleMemoryKO(pos.id, u.ticker)} className={`shrink-0 w-4 h-4 md:w-3 md:h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 dark:bg-red-500 border-red-500 dark:border-red-500' : 'border-slate-300 dark:border-slate-500 hover:border-blue-400 dark:hover:border-blue-400'}`} title="手動標記/取消 KO">{u.memoryKO && <Check size={10} className="text-white md:w-[8px] md:h-[8px]" strokeWidth={4} />}</button>)}
                                             {isGuestMode && u.memoryKO && <div className="shrink-0 w-4 h-4 md:w-3 md:h-3 bg-red-500 dark:bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={10} className="text-white md:w-[8px] md:h-[8px]"/></div>}
-                                            <span className={`font-black text-sm md:text-sm truncate flex items-center gap-0.5 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-xs md:text-[10px]" title="手動鎖定報價中">🔒</span>}</span>
+                                            <span className={`font-black text-[14px] sm:text-sm truncate flex items-center gap-0.5 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-xs md:text-[10px]" title="手動鎖定報價中">🔒</span>}</span>
                                         </div>
-                                        <span className={`sm:hidden font-mono font-bold text-xs whitespace-nowrap mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice, pos.currency)}</span>
-                                        {u.name && <span className="text-xs md:text-xs text-slate-400 dark:text-slate-300 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                        <span className={`sm:hidden font-mono font-bold text-[13px] whitespace-nowrap mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice, pos.currency)}</span>
+                                        {u.name && <span className="text-[10px] md:text-xs text-slate-400 dark:text-slate-300 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
                                     <span className={`hidden sm:block sm:w-[15%] font-mono font-bold text-right text-xs md:text-sm whitespace-nowrap px-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice, pos.currency)}</span>
-                                    {/* 🌟 放大至 text-[13px]，並移除擠壓的 tracking-tighter */}
-                                    <span className="w-[25%] sm:w-[20%] font-mono font-bold text-red-700 dark:text-red-400 text-right text-[13px] md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.koPrice, pos.currency)}</span>
-                                    <span className="w-[25%] sm:w-[20%] font-mono text-slate-500 dark:text-slate-300 text-right text-[13px] md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.strikePrice, pos.currency)}</span>
-                                    <span className="w-[25%] sm:w-[20%] font-mono font-bold text-green-700 dark:text-green-400 text-right text-[13px] md:text-sm whitespace-nowrap pl-0.5">{formatStockPrice(u.kiPrice, pos.currency)}</span>
+                                    
+                                    {/* 🌟 修改點 2：放大至 15px (text-[15px]) 且加粗，並配合上方的置中設定 */}
+                                    <span className="w-[24%] sm:w-[20%] font-mono font-bold text-red-700 dark:text-red-400 text-center sm:text-right text-[15px] md:text-sm whitespace-nowrap">{formatStockPrice(u.koPrice, pos.currency)}</span>
+                                    <span className="w-[24%] sm:w-[20%] font-mono text-slate-500 dark:text-slate-300 text-center sm:text-right text-[15px] md:text-sm whitespace-nowrap">{formatStockPrice(u.strikePrice, pos.currency)}</span>
+                                    <span className="w-[24%] sm:w-[20%] font-mono font-bold text-green-700 dark:text-green-400 text-right text-[15px] md:text-sm whitespace-nowrap pl-0.5">{formatStockPrice(u.kiPrice, pos.currency)}</span>
                                   </div>
                                 );
                               })}
