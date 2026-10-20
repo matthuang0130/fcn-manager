@@ -578,10 +578,10 @@ const App = () => {
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 group-hover:opacity-20 transition-opacity"><DollarSign size={48} className="text-slate-400"/></div>
                 <div className="relative z-10">
-                    <div className="text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-1">USD 資產總覽</div>
+                    <div className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-1">USD 資產總覽</div>
                     <div className="flex flex-col gap-1">
-                        <div className="flex items-baseline gap-1"><span className="text-2xl font-black text-slate-800 dark:text-white">${(summary.usd.nominal/10000).toFixed(0)}</span><span className="text-sm font-bold text-slate-600 dark:text-slate-200">萬</span><span className="text-xs text-slate-400 dark:text-slate-300 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
-                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={12} strokeWidth={4} /><span className="text-lg">${summary.usd.monthly.toLocaleString()}</span><span className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/40 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
+                        <div className="flex items-baseline gap-1"><span className="text-3xl md:text-2xl font-black text-slate-800 dark:text-white">${(summary.usd.nominal/10000).toFixed(0)}</span><span className="text-base md:text-sm font-bold text-slate-600 dark:text-slate-200">萬</span><span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
+                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={14} strokeWidth={4} /><span className="text-xl md:text-lg">${summary.usd.monthly.toLocaleString()}</span><span className="text-sm md:text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/40 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
                     </div>
                 </div>
             </div>
@@ -589,29 +589,29 @@ const App = () => {
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 group-hover:opacity-20 transition-opacity"><Coins size={48} className="text-slate-400"/></div>
                 <div className="relative z-10">
-                    <div className="text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-1">JPY 資產總覽</div>
+                    <div className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-1">JPY 資產總覽</div>
                      <div className="flex flex-col gap-1">
-                        <div className="flex items-baseline gap-1"><span className="text-2xl font-black text-slate-800 dark:text-white">¥{(summary.jpy.nominal/10000).toFixed(0)}</span><span className="text-sm font-bold text-slate-600 dark:text-slate-200">萬</span><span className="text-xs text-slate-400 dark:text-slate-300 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
-                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={12} strokeWidth={4} /><span className="text-lg">¥{summary.jpy.monthly.toLocaleString()}</span><span className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/40 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
+                        <div className="flex items-baseline gap-1"><span className="text-3xl md:text-2xl font-black text-slate-800 dark:text-white">¥{(summary.jpy.nominal/10000).toFixed(0)}</span><span className="text-base md:text-sm font-bold text-slate-600 dark:text-slate-200">萬</span><span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
+                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={14} strokeWidth={4} /><span className="text-xl md:text-lg">¥{summary.jpy.monthly.toLocaleString()}</span><span className="text-sm md:text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/40 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
                     </div>
                 </div>
             </div>
 
             <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.koCount > 0 ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800/60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-              <span className="text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider">KO 機會</span>
-              <div className="flex items-end justify-between mt-2"><span className="text-3xl font-black text-red-600 dark:text-red-400">{summary.koCount}</span><TrendingUp size={24} className="text-red-400 dark:text-red-500 mb-1"/></div>
+              <span className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider">KO 機會</span>
+              <div className="flex items-end justify-between mt-2"><span className="text-4xl md:text-3xl font-black text-red-600 dark:text-red-400">{summary.koCount}</span><TrendingUp size={28} className="text-red-400 dark:text-red-500 mb-1"/></div>
             </div>
             
             <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.kiCount > 0 ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800/60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-              <span className="text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider">KI 風險</span>
-              <div className="flex items-end justify-between mt-2"><span className="text-3xl font-black text-green-600 dark:text-green-400">{summary.kiCount}</span><AlertTriangle size={24} className="text-green-400 dark:text-green-500 mb-1"/></div>
+              <span className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider">KI 風險</span>
+              <div className="flex items-end justify-between mt-2"><span className="text-4xl md:text-3xl font-black text-green-600 dark:text-green-400">{summary.kiCount}</span><AlertTriangle size={28} className="text-green-400 dark:text-green-500 mb-1"/></div>
             </div>
           </div>
           
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors duration-300">
-            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex justify-between items-center">
-              <div className="flex items-center gap-2"><Briefcase size={16} className="text-slate-400 dark:text-slate-300"/><h2 className="font-bold text-slate-700 dark:text-slate-100 text-sm">{activeClient.name} 的部位</h2></div>
-              <span className="text-xs text-slate-400 dark:text-slate-300 bg-white dark:bg-slate-700 border dark:border-slate-600 px-2 py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
+            <div className="px-4 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex justify-between items-center">
+              <div className="flex items-center gap-2"><Briefcase size={18} className="text-slate-400 dark:text-slate-300"/><h2 className="font-bold text-slate-700 dark:text-slate-100 text-base md:text-sm">{activeClient.name} 的部位</h2></div>
+              <span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 bg-white dark:bg-slate-700 border dark:border-slate-600 px-3 py-1 md:py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
             </div>
             
             <div className="w-full p-3 md:p-0 overflow-x-auto">
@@ -633,61 +633,61 @@ const App = () => {
 
                       return (
                         <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
-                            <div className="flex items-center gap-2 mb-2">
-                               <span className={`text-xs px-2 py-0.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'}`}> {pos.currency} </span>
-                               <div className="text-sm md:text-base font-black text-slate-800 dark:text-white break-words md:whitespace-normal" title={pos.productName}>{pos.productName}</div>
-                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
+                          <td className="block md:table-cell px-4 py-4 md:py-3 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
+                            <div className="flex items-center gap-2 mb-3 md:mb-2">
+                               <span className={`text-sm md:text-xs px-2 py-1 md:py-0.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'}`}> {pos.currency} </span>
+                               <div className="text-lg md:text-base font-black text-slate-800 dark:text-white break-words md:whitespace-normal" title={pos.productName}>{pos.productName}</div>
+                               <span className={`inline-flex items-center px-2 py-1 md:py-0.5 rounded text-sm md:text-xs font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
-                            <div className="flex flex-col md:flex-row gap-1.5 md:gap-3">
+                            <div className="flex flex-col md:flex-row gap-2 md:gap-3">
                                  <div className="flex flex-wrap gap-2 items-center">
-                                     <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-xs md:text-sm text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-600 font-medium">{pos.issuer}</span>
-                                     <span className="bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded text-xs md:text-sm text-blue-700 dark:text-blue-200 font-bold border border-blue-100 dark:border-blue-800/50">年息 {pos.couponRate}%</span>
+                                     <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 md:py-0.5 rounded text-sm md:text-sm text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-600 font-medium">{pos.issuer}</span>
+                                     <span className="bg-blue-50 dark:bg-blue-900/40 px-2 py-1 md:py-0.5 rounded text-sm md:text-sm text-blue-700 dark:text-blue-200 font-bold border border-blue-100 dark:border-blue-800/50">年息 {pos.couponRate}%</span>
                                  </div>
                             </div>
-                            <div className="flex flex-col gap-1 mt-2 text-xs text-slate-400 dark:text-slate-300">
-                                <div className="flex flex-wrap items-center gap-2 w-full max-w-[280px]">
-                                    <span className="flex items-center gap-1"><Clock size={12}/> {pos.maturityDate} 最後觀察</span>
+                            <div className="flex flex-col gap-1 mt-3 md:mt-2 text-sm md:text-xs text-slate-400 dark:text-slate-300">
+                                <div className="flex flex-wrap items-center gap-2.5 md:gap-2 w-full max-w-[320px]">
+                                    <span className="flex items-center gap-1"><Clock size={14}/> {pos.maturityDate} 最後觀察</span>
                                     
                                     {pos.nextCouponDateStr && (
-                                        <span className="flex items-center gap-0.5 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded border border-green-100 dark:border-green-800/50" title="實際資金入帳通常為配息日後 3~5 個營業日">
-                                            <DollarSign size={10}/>
+                                        <span className="flex items-center gap-0.5 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-1 md:px-1.5 md:py-0.5 rounded border border-green-100 dark:border-green-800/50" title="實際資金入帳通常為配息日後 3~5 個營業日">
+                                            <DollarSign size={12}/>
                                             {pos.firstCouponDate === pos.nextCouponDateStr ? '首配' : '配息'}: {pos.nextCouponDateStr}
-                                            <span className="text-[10px] opacity-75 font-normal ml-0.5">(+3~5日入帳)</span>
+                                            <span className="text-xs md:text-[10px] opacity-75 font-normal ml-0.5">(+3~5日入帳)</span>
                                         </span>
                                     )}
 
                                     {pos.koType !== 'Daily' && (
-                                        <div onClick={() => handleOverrideObsDate(pos.id, nextObsStr, pos.currentDynamicKoLevel)} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-200 transition" title="點擊手動修改下次觀察日與門檻">
-                                            <span className="font-bold text-slate-700 dark:text-slate-200">下次: {nextObsStr}</span>{!isGuestMode && <Pencil size={10} className="dark:text-slate-300"/>}
+                                        <div onClick={() => handleOverrideObsDate(pos.id, nextObsStr, pos.currentDynamicKoLevel)} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 px-2 py-1 md:px-1.5 md:py-0.5 rounded cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-200 transition" title="點擊手動修改下次觀察日與門檻">
+                                            <span className="font-bold text-slate-700 dark:text-slate-200">下次: {nextObsStr}</span>{!isGuestMode && <Pencil size={12} className="dark:text-slate-300"/>}
                                         </div>
                                     )}
                                 </div>
                             </div>
                           </td>
                           
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto bg-slate-50/50 dark:bg-transparent"> 
-                            <div className="flex flex-row md:flex-col items-center justify-between md:justify-center h-full gap-2 w-full">
-                                <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-300">本金與月息</span>
-                                <div className="relative overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-auto h-auto py-2 md:py-3 px-4 md:px-2"> 
+                          <td className="block md:table-cell px-4 py-4 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto bg-slate-50/50 dark:bg-transparent"> 
+                            <div className="flex flex-col md:flex-col items-start md:items-center justify-between md:justify-center h-full gap-2 w-full">
+                                <span className="md:hidden text-base font-bold text-slate-500 dark:text-slate-300 mb-1">本金與月息</span>
+                                <div className="relative overflow-hidden rounded-xl md:rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 md:p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-auto h-auto"> 
                                     <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 dark:border-slate-700 md:pb-2 flex flex-col md:block"> 
-                                        <span className="text-xs text-slate-500 dark:text-slate-300 font-bold tracking-widest mb-0.5">本金</span> 
-                                        <div className="text-slate-800 dark:text-white font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">{formatToWan(pos.nominal)}<span className="text-xs ml-0.5 font-bold text-slate-600 dark:text-slate-300">萬</span></div>
+                                        <span className="text-sm md:text-xs text-slate-500 dark:text-slate-300 font-bold tracking-widest mb-1 md:mb-0.5">本金</span> 
+                                        <div className="text-slate-800 dark:text-white font-black text-lg md:text-base lg:text-lg leading-tight whitespace-nowrap">{formatToWan(pos.nominal)}<span className="text-sm md:text-xs ml-0.5 font-bold text-slate-600 dark:text-slate-300">萬</span></div>
                                     </div>
-                                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 md:hidden"></div>
+                                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 md:hidden"></div>
                                     <div className="text-right md:text-center flex-1 md:w-full md:pt-1 flex flex-col md:block">
-                                        <span className="text-xs text-red-600 dark:text-red-400 font-bold tracking-widest mb-0.5">月息</span> 
-                                        <div className="text-red-700 dark:text-red-400 font-black text-sm md:text-base lg:text-lg leading-tight whitespace-nowrap">{pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}</div>
+                                        <span className="text-sm md:text-xs text-red-600 dark:text-red-400 font-bold tracking-widest mb-1 md:mb-0.5">月息</span> 
+                                        <div className="text-red-700 dark:text-red-400 font-black text-lg md:text-base lg:text-lg leading-tight whitespace-nowrap">{pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}</div>
                                     </div>
                                 </div>
                             </div>
                           </td>
 
-                          <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
+                          <td className="block md:table-cell px-4 py-4 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
                             <div className="flex flex-col gap-1 w-full min-w-0"> 
-                              <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-200 mb-1">連結標的情況</span>
+                              <span className="md:hidden text-base font-bold text-slate-500 dark:text-slate-200 mb-2">連結標的情況</span>
                               
-                              <div className="grid grid-cols-12 gap-1 text-xs md:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-1 mb-1 px-1 whitespace-nowrap">
+                              <div className="grid grid-cols-12 gap-1 text-sm md:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-2 md:pb-1 mb-2 md:mb-1 px-1 whitespace-nowrap">
                                   <span className="col-span-3 text-left">標的</span>
                                   <span className="col-span-2 text-right hidden sm:block">現價</span>
                                   <span className="col-span-3 text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</span>
@@ -698,31 +698,31 @@ const App = () => {
                               {(pos.underlyingDetails || []).map((u) => {
                                 const isTickerLocked = lockedTickers && lockedTickers.includes(u.ticker);
                                 return (
-                                  <div key={u.ticker} className={`grid grid-cols-12 gap-1 items-center border-b border-slate-50 dark:border-slate-700/50 last:border-0 py-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-800' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                                  <div key={u.ticker} className={`grid grid-cols-12 gap-1 items-center border-b border-slate-50 dark:border-slate-700/50 last:border-0 py-2 md:py-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-800' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
                                     <div className="col-span-3 flex flex-col justify-center min-w-0 pr-1">
-                                        <div className="flex items-center gap-1">
-                                            {!isGuestMode && (<button onClick={() => toggleMemoryKO(pos.id, u.ticker)} className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 dark:bg-red-500 border-red-500 dark:border-red-500' : 'border-slate-300 dark:border-slate-500 hover:border-blue-400 dark:hover:border-blue-400'}`} title="手動標記/取消 KO">{u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}</button>)}
-                                            {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 dark:bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
-                                            <span className={`font-black text-sm truncate flex items-center gap-0.5 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-[10px]" title="手動鎖定報價中">🔒</span>}</span>
+                                        <div className="flex items-center gap-1.5 md:gap-1">
+                                            {!isGuestMode && (<button onClick={() => toggleMemoryKO(pos.id, u.ticker)} className={`shrink-0 w-4 h-4 md:w-3 md:h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 dark:bg-red-500 border-red-500 dark:border-red-500' : 'border-slate-300 dark:border-slate-500 hover:border-blue-400 dark:hover:border-blue-400'}`} title="手動標記/取消 KO">{u.memoryKO && <Check size={10} className="text-white md:w-[8px] md:h-[8px]" strokeWidth={4} />}</button>)}
+                                            {isGuestMode && u.memoryKO && <div className="shrink-0 w-4 h-4 md:w-3 md:h-3 bg-red-500 dark:bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={10} className="text-white md:w-[8px] md:h-[8px]"/></div>}
+                                            <span className={`font-black text-base md:text-sm truncate flex items-center gap-0.5 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-xs md:text-[10px]" title="手動鎖定報價中">🔒</span>}</span>
                                         </div>
-                                        <span className={`sm:hidden font-mono font-bold text-xs whitespace-nowrap mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice)}</span>
-                                        {u.name && <span className="text-xs text-slate-400 dark:text-slate-300 truncate hidden sm:block -mt-0.5">{u.name}</span>}
+                                        <span className={`sm:hidden font-mono font-bold text-sm md:text-xs whitespace-nowrap mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice)}</span>
+                                        {u.name && <span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
-                                    <span className={`col-span-2 hidden sm:block font-mono font-bold text-right text-xs md:text-sm whitespace-nowrap px-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice)}</span>
-                                    <span className="col-span-3 font-mono font-bold text-red-700 dark:text-red-400 text-right text-xs md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.koPrice)}</span>
-                                    <span className="col-span-2 font-mono text-slate-500 dark:text-slate-300 text-right text-xs md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.strikePrice)}</span>
-                                    <span className="col-span-2 font-mono font-bold text-green-700 dark:text-green-400 text-right text-xs md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.kiPrice)}</span>
+                                    <span className={`col-span-2 hidden sm:block font-mono font-bold text-right text-sm md:text-sm whitespace-nowrap px-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice)}</span>
+                                    <span className="col-span-3 font-mono font-bold text-red-700 dark:text-red-400 text-right text-sm md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.koPrice)}</span>
+                                    <span className="col-span-2 font-mono text-slate-500 dark:text-slate-300 text-right text-sm md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.strikePrice)}</span>
+                                    <span className="col-span-2 font-mono font-bold text-green-700 dark:text-green-400 text-right text-sm md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.kiPrice)}</span>
                                   </div>
                                 );
                               })}
                             </div>
                           </td>
 
-                          <td className="block md:table-cell px-4 py-3 md:py-2 text-right align-middle bg-slate-50 dark:bg-transparent w-full md:w-auto"> 
+                          <td className="block md:table-cell px-4 py-4 md:py-2 text-right align-middle bg-slate-50 dark:bg-transparent w-full md:w-auto"> 
                             {!isGuestMode && (
-                                <div className="flex md:flex-col items-center justify-end gap-2 md:h-full w-full md:w-auto">
-                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1 text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 md:p-2 border md:border-0 border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent hover:bg-blue-50 dark:hover:bg-slate-700 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="編輯部位"><Pencil size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">編輯</span></button>
-                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1 text-slate-500 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 px-3 py-2 md:p-2 border md:border-0 border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg md:rounded-full transition text-xs font-bold flex-1 md:flex-none" title="刪除部位"><Trash2 size={14} className="md:w-[18px] md:h-[18px]"/> <span className="md:hidden">刪除</span></button>
+                                <div className="flex md:flex-col items-center justify-end gap-3 md:gap-2 md:h-full w-full md:w-auto">
+                                    <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1.5 md:gap-1 text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 px-4 py-3 md:p-2 border md:border-0 border-slate-300 dark:border-slate-600 bg-white dark:bg-transparent hover:bg-blue-50 dark:hover:bg-slate-700 rounded-lg md:rounded-full transition text-sm md:text-xs font-bold flex-1 md:flex-none" title="編輯部位"><Pencil size={16} className="md:w-[14px] md:h-[14px]"/> <span className="md:hidden">編輯</span></button>
+                                    <button onClick={() => deletePosition(pos.id)} className="flex items-center justify-center gap-1.5 md:gap-1 text-slate-500 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 px-4 py-3 md:p-2 border md:border-0 border-slate-300 dark:border-slate-600 bg-white dark:bg-transparent hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg md:rounded-full transition text-sm md:text-xs font-bold flex-1 md:flex-none" title="刪除部位"><Trash2 size={16} className="md:w-[14px] md:h-[14px]"/> <span className="md:hidden">刪除</span></button>
                                 </div>
                             )}
                           </td>
