@@ -98,13 +98,18 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
              )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
              <div>
-                <label className="text-sm text-slate-500 dark:text-slate-300">{newPosition.koType === 'Custom' ? '商品生效日' : 'KO 觀察(起)日'}</label>
-                <input type="date" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.koObservationStartDate} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/>
+                <label className="text-sm text-slate-500 dark:text-slate-300">{newPosition.koType === 'Custom' ? '商品生效日' : '觀察(起)日'}</label>
+                <input type="date" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.koObservationStartDate || ""} onChange={e=>setNewPosition({...newPosition, koObservationStartDate:e.target.value})}/>
              </div>
-             <div><label className="text-sm text-slate-500 dark:text-slate-300">到期日</label><input type="date" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.maturityDate} onChange={e=>setNewPosition({...newPosition, maturityDate:e.target.value})}/></div>
-             <div><label className="text-sm text-slate-500 dark:text-slate-300">存續期</label><input type="text" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.tenor} onChange={e=>setNewPosition({...newPosition, tenor:e.target.value})}/></div>
+             <div>
+                <label className="text-sm text-slate-500 dark:text-slate-300">首次配息日</label>
+                <input type="date" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.firstCouponDate || ""} onChange={e=>setNewPosition({...newPosition, firstCouponDate:e.target.value})}/>
+             </div>
+             {/* 🌟 這裡改成「最後觀察日」 */}
+             <div><label className="text-sm text-slate-500 dark:text-slate-300">最後觀察日</label><input type="date" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.maturityDate || ""} onChange={e=>setNewPosition({...newPosition, maturityDate:e.target.value})}/></div>
+             <div><label className="text-sm text-slate-500 dark:text-slate-300">存續期</label><input type="text" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.tenor || ""} onChange={e=>setNewPosition({...newPosition, tenor:e.target.value})}/></div>
           </div>
 
           <div>
