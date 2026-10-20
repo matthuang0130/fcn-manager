@@ -76,7 +76,6 @@ const App = () => {
     return undefined;
   };
 
-  // 🌟 新增：智慧股價格式化函數（保留最多 3 位小數）
   const formatStockPrice = (price) => {
       if (price === undefined || price === null) return '-';
       return Number(price).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
@@ -687,28 +686,32 @@ const App = () => {
                           <td className="block md:table-cell px-4 py-3 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
                             <div className="flex flex-col gap-1 w-full min-w-0"> 
                               <span className="md:hidden text-sm font-bold text-slate-500 dark:text-slate-200 mb-1">連結標的情況</span>
-                              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 text-xs md:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-1 mb-1 px-1 whitespace-nowrap">
-                                  <span className="col-span-2 text-left">標的</span><span className="text-right hidden sm:block">現價</span><span className="text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</span><span className="text-right text-slate-500 dark:text-slate-200">履約</span><span className="text-right text-green-600 dark:text-green-400">KI</span>
+                              
+                              <div className="grid grid-cols-12 gap-1 text-xs md:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-1 mb-1 px-1 whitespace-nowrap">
+                                  <span className="col-span-3 text-left">標的</span>
+                                  <span className="col-span-2 text-right hidden sm:block">現價</span>
+                                  <span className="col-span-3 text-right text-red-600 dark:text-red-400">KO ({pos.currentDynamicKoLevel}%)</span>
+                                  <span className="col-span-2 text-right text-slate-500 dark:text-slate-200">履約</span>
+                                  <span className="col-span-2 text-right text-green-600 dark:text-green-400">KI</span>
                               </div>
+
                               {(pos.underlyingDetails || []).map((u) => {
                                 const isTickerLocked = lockedTickers && lockedTickers.includes(u.ticker);
                                 return (
-                                  <div key={u.ticker} className={`grid grid-cols-5 sm:grid-cols-6 gap-1 md:gap-2 items-center border-b border-slate-50 dark:border-slate-700/50 last:border-0 pb-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-800' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                                    <div className="col-span-2 flex flex-col justify-center min-w-0">
+                                  <div key={u.ticker} className={`grid grid-cols-12 gap-1 items-center border-b border-slate-50 dark:border-slate-700/50 last:border-0 py-1 px-1 transition-colors rounded ${u.memoryKO ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-800' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                                    <div className="col-span-3 flex flex-col justify-center min-w-0 pr-1">
                                         <div className="flex items-center gap-1">
                                             {!isGuestMode && (<button onClick={() => toggleMemoryKO(pos.id, u.ticker)} className={`shrink-0 w-3 h-3 rounded border flex items-center justify-center transition-colors ${u.memoryKO ? 'bg-red-500 dark:bg-red-500 border-red-500 dark:border-red-500' : 'border-slate-300 dark:border-slate-500 hover:border-blue-400 dark:hover:border-blue-400'}`} title="手動標記/取消 KO">{u.memoryKO && <Check size={8} className="text-white" strokeWidth={4} />}</button>)}
                                             {isGuestMode && u.memoryKO && <div className="shrink-0 w-3 h-3 bg-red-500 dark:bg-red-500 rounded-full flex items-center justify-center" title="已觸價"><Check size={8} className="text-white"/></div>}
-                                            <span className={`font-black text-sm md:text-base truncate flex items-center gap-1 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-[10px]" title="此標的已強制手動鎖定報價，不受 API 自動干擾">🔒</span>}</span>
+                                            <span className={`font-black text-sm truncate flex items-center gap-0.5 ${u.memoryKO ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>{u.ticker}{isTickerLocked && !isGuestMode && <span className="text-amber-500 text-[10px]" title="手動鎖定報價中">🔒</span>}</span>
                                         </div>
-                                        {/* 🌟 替換為 formatStockPrice */}
-                                        <span className={`sm:hidden font-mono font-black text-xs whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice)}</span>
+                                        <span className={`sm:hidden font-mono font-bold text-xs whitespace-nowrap mt-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pos.currency === 'JPY' ? '¥' : '$'}{formatStockPrice(u.currentPrice)}</span>
                                         {u.name && <span className="text-xs text-slate-400 dark:text-slate-300 truncate hidden sm:block -mt-0.5">{u.name}</span>}
                                     </div>
-                                    {/* 🌟 全面替換為 formatStockPrice 保留美股小數點 */}
-                                    <span className={`hidden sm:block font-mono font-black text-right text-sm md:text-base whitespace-nowrap ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice)}</span>
-                                    <span className="font-mono font-bold text-red-700 dark:text-red-400 text-right text-sm md:text-base whitespace-nowrap">{formatStockPrice(u.koPrice)}</span>
-                                    <span className="font-mono text-slate-500 dark:text-slate-300 text-right text-sm md:text-base whitespace-nowrap">{formatStockPrice(u.strikePrice)}</span>
-                                    <span className="font-mono font-bold text-green-700 dark:text-green-400 text-right text-sm md:text-base whitespace-nowrap">{formatStockPrice(u.kiPrice)}</span>
+                                    <span className={`col-span-2 hidden sm:block font-mono font-bold text-right text-xs md:text-sm whitespace-nowrap px-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice)}</span>
+                                    <span className="col-span-3 font-mono font-bold text-red-700 dark:text-red-400 text-right text-xs md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.koPrice)}</span>
+                                    <span className="col-span-2 font-mono text-slate-500 dark:text-slate-300 text-right text-xs md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.strikePrice)}</span>
+                                    <span className="col-span-2 font-mono font-bold text-green-700 dark:text-green-400 text-right text-xs md:text-sm whitespace-nowrap px-0.5">{formatStockPrice(u.kiPrice)}</span>
                                   </div>
                                 );
                               })}
