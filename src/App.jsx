@@ -402,9 +402,43 @@ const App = () => {
     
     let riskStatus = "觀察中", statusColor = "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800/50"; 
     
-    if (allTouchedKO) { riskStatus = "達成 KO"; statusColor = "bg-red-600 dark:bg-red-600 text-white font-bold border border-red-700 shadow-sm animate-pulse"; } 
-    else if (minPerf <= pos.kiLevel) { riskStatus = "已觸及 KI"; statusColor = "bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 font-bold border border-green-300 dark:border-green-800/50"; } 
-    else if (minPerf <= pos.kiLevel + 5) { riskStatus = "瀕臨 KI"; statusColor = "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 font-bold border border-orange-300 dark:border-orange-800/50"; } 
+    const isMatured = pos.maturityDate && todayRenderStr >= pos.maturityDate;
+    const kiType = pos.kiType || 'AKI';
+
+    if (allTouchedKO) { 
+        riskStatus = "達成 KO"; statusColor = "bg-red-600 dark:bg-red-600 text-white font-bold border border-red-700 shadow-sm animate-pulse"; 
+    } else if (isMatured) {
+        if (minPerf >= pos.strikeLevel) {
+            riskStatus = "安全出場 (現金結算)"; 
+            statusColor = "bg-green-500 text-white font-bold border border-green-600 shadow-sm";
+        } else {
+            if (kiType === 'EKI') {
+                if (minPerf <= pos.kiLevel) {
+                    riskStatus = "接股票 (跌破 EKI)"; 
+                    statusColor = "bg-purple-600 text-white font-bold border border-purple-700 shadow-sm";
+                } else {
+                    riskStatus = "安全出場 (未觸 EKI)"; 
+                    statusColor = "bg-green-500 text-white font-bold border border-green-600 shadow-sm";
+                }
+            } else { 
+                if (minPerf <= pos.kiLevel) {
+                    riskStatus = "接股票 (低於 KI)"; 
+                    statusColor = "bg-purple-600 text-white font-bold border border-purple-700 shadow-sm";
+                } else {
+                    riskStatus = "需確認 KI 紀錄"; 
+                    statusColor = "bg-orange-500 text-white font-bold border border-orange-600 shadow-sm animate-pulse";
+                }
+            }
+        }
+    } else { 
+        if (minPerf <= pos.kiLevel) { 
+            riskStatus = kiType === 'EKI' ? "跌破 EKI 線" : "已觸及 KI"; 
+            statusColor = "bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 font-bold border border-green-300 dark:border-green-800/50"; 
+        } else if (minPerf <= pos.kiLevel + 5) { 
+            riskStatus = "瀕臨 KI"; 
+            statusColor = "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 font-bold border border-orange-300 dark:border-orange-800/50"; 
+        }
+    }
     
     return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon, isProductKO: allTouchedKO, currentDynamicKoLevel, nextCouponDateStr };
   };
@@ -469,7 +503,9 @@ const App = () => {
       clientId: activeClientId, productName: formPosition.productName || `FCN ${tickersStr}`, issuer: formPosition.issuer || "Self", 
       nominal: parseFloat(formPosition.nominal), currency: formPosition.currency, couponRate: parseFloat(formPosition.couponRate), 
       strikeDate: formPosition.strikeDate, koObservationStartDate: formPosition.koObservationStartDate, firstCouponDate: formPosition.firstCouponDate, maturityDate: formPosition.maturityDate, tenor: formPosition.tenor, 
-      koLevel: parseFloat(formPosition.koLevel), kiLevel: parseFloat(formPosition.kiLevel), strikeLevel: parseFloat(formPosition.strikeLevel), koType: formPosition.koType || "Daily", stepDownRate: parseFloat(formPosition.stepDownRate || 0), 
+      koLevel: parseFloat(formPosition.koLevel), kiLevel: parseFloat(formPosition.kiLevel), 
+      kiType: formPosition.kiType || "AKI", 
+      strikeLevel: parseFloat(formPosition.strikeLevel), koType: formPosition.koType || "Daily", stepDownRate: parseFloat(formPosition.stepDownRate || 0), 
       underlyings: validUnderlyings, status: "Active", customSchedule: validCustomSchedule
     };
     if (editId) setAllPositions(prev => prev.map(p => p.id === editId ? { ...entryData, id: editId } : p));
@@ -497,7 +533,9 @@ const App = () => {
       setEditId(pos.id); 
       setFormPosition({ 
           productName: pos.productName || "", issuer: pos.issuer || "", nominal: pos.nominal || 0, currency: pos.currency || "USD", couponRate: pos.couponRate || 0, 
-          koLevel: pos.koLevel || 100, kiLevel: pos.kiLevel || 70, strikeLevel: pos.strikeLevel || 100, strikeDate: pos.strikeDate || "", 
+          koLevel: pos.koLevel || 100, kiLevel: pos.kiLevel || 70, 
+          kiType: pos.kiType || "AKI", 
+          strikeLevel: pos.strikeLevel || 100, strikeDate: pos.strikeDate || "", 
           koObservationStartDate: pos.koObservationStartDate || "", firstCouponDate: pos.firstCouponDate || "", tenor: pos.tenor || "", maturityDate: pos.maturityDate || "", koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0, manualNextObsDate: pos.manualNextObsDate || "",
           customSchedule: (pos.customSchedule || []).map(s => ({ ...s, id: s.id || Date.now() + Math.random() }))
       }); 
@@ -619,9 +657,10 @@ const App = () => {
               <table className="w-full text-left border-collapse block md:table">
                 <thead className="hidden md:table-header-group bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
                   <tr className="text-sm text-slate-600 dark:text-slate-200 font-bold">
-                    <th className="px-4 py-3 w-[25%]">產品資訊</th>
-                    <th className="px-4 py-3 text-center w-[15%]">本金 / 月息</th>
-                    <th className="px-4 py-3 w-[50%]">連結標的情況</th>
+                    {/* 🌟 電腦版標題寬度調整 */}
+                    <th className="px-4 py-3 w-[30%]">產品資訊</th>
+                    <th className="px-2 py-3 text-center w-[15%]">本金 / 月息</th>
+                    <th className="px-4 py-3 w-[45%]">連結標的情況</th>
                     <th className="px-4 py-3 text-right w-[10%]">操作</th>
                   </tr>
                 </thead>
@@ -634,20 +673,23 @@ const App = () => {
 
                       return (
                         <tr key={pos.id} className={`${rowClass} transition group block md:table-row w-full border md:border-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none overflow-hidden`}>
-                          <td className="block md:table-cell px-4 py-4 md:py-3 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
-                            <div className="flex items-center gap-2 mb-3 md:mb-2">
+                          {/* 🌟 電腦版第一欄限制寬度 */}
+                          <td className="block md:table-cell px-4 py-4 md:py-3 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-[30%] align-top"> 
+                            <div className="flex flex-wrap items-center gap-2 mb-3 md:mb-2">
                                <span className={`text-sm md:text-xs px-2 py-1 md:py-0.5 rounded font-bold shrink-0 ${pos.currency === 'USD' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'}`}> {pos.currency} </span>
                                <div className="text-lg md:text-base font-black text-slate-800 dark:text-white break-words md:whitespace-normal" title={pos.productName}>{pos.productName}</div>
-                               <span className={`inline-flex items-center px-2 py-1 md:py-0.5 rounded text-sm md:text-xs font-bold ml-auto shrink-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
+                               {/* 🌟 狀態標籤如果太長，會自然往下掉，不會撞到右邊 */}
+                               <span className={`inline-flex items-center px-2 py-1 md:py-0.5 rounded text-sm md:text-xs font-bold shrink-0 mt-1 sm:mt-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             <div className="flex flex-col md:flex-row gap-2 md:gap-3">
                                  <div className="flex flex-wrap gap-2 items-center">
                                      <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 md:py-0.5 rounded text-sm md:text-sm text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-600 font-medium">{pos.issuer}</span>
                                      <span className="bg-blue-50 dark:bg-blue-900/40 px-2 py-1 md:py-0.5 rounded text-sm md:text-sm text-blue-700 dark:text-blue-200 font-bold border border-blue-100 dark:border-blue-800/50">年息 {pos.couponRate}%</span>
+                                     <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 md:py-0.5 rounded text-sm md:text-sm text-slate-500 dark:text-slate-300 font-bold border border-slate-200 dark:border-slate-600" title={pos.kiType === 'EKI' ? '只看最後一天是否跌破' : '期間跌破即算觸及'}>{pos.kiType || 'AKI'}</span>
                                  </div>
                             </div>
                             <div className="flex flex-col gap-1 mt-3 md:mt-2 text-sm md:text-xs text-slate-400 dark:text-slate-300">
-                                <div className="flex flex-wrap items-center gap-2.5 md:gap-2 w-full max-w-[320px]">
+                                <div className="flex flex-wrap items-center gap-2.5 md:gap-2 w-full">
                                     <span className="flex items-center gap-1"><Clock size={14}/> {pos.maturityDate} 最後觀察</span>
                                     
                                     {pos.nextCouponDateStr && (
@@ -667,28 +709,29 @@ const App = () => {
                             </div>
                           </td>
                           
-                          <td className="block md:table-cell px-4 py-4 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto bg-slate-50/50 dark:bg-transparent"> 
-                            <div className="flex flex-col md:flex-col items-start md:items-center justify-between md:justify-center h-full gap-2 w-full">
+                          {/* 🌟 電腦版中間欄限制寬度並置中 */}
+                          <td className="block md:table-cell px-4 py-4 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-[15%] bg-slate-50/50 dark:bg-transparent"> 
+                            <div className="flex flex-col md:flex-col items-start md:items-center justify-between md:justify-center h-full gap-2 w-full max-w-[200px] mx-auto">
                                 <span className="md:hidden text-base font-bold text-slate-500 dark:text-slate-300 mb-1">本金與月息</span>
-                                <div className="relative overflow-hidden rounded-xl md:rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 md:p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-2 w-full md:w-auto h-auto"> 
-                                    <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 dark:border-slate-700 md:pb-2 flex flex-col md:block"> 
-                                        <span className="text-sm md:text-xs text-slate-500 dark:text-slate-300 font-bold tracking-widest mb-1 md:mb-0.5">本金</span> 
+                                <div className="relative overflow-hidden rounded-xl md:rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 md:p-2 shadow-sm flex flex-row md:flex-col justify-between md:justify-center items-center gap-4 md:gap-1 w-full h-auto"> 
+                                    <div className="text-left md:text-center flex-1 md:w-full md:border-b border-slate-100 dark:border-slate-700 md:pb-1 flex flex-col md:block"> 
+                                        <span className="text-sm md:text-xs text-slate-500 dark:text-slate-300 font-bold tracking-widest mb-1 md:mb-0">本金</span> 
                                         <div className="text-slate-800 dark:text-white font-black text-lg md:text-base lg:text-lg leading-tight whitespace-nowrap">{formatToWan(pos.nominal)}<span className="text-sm md:text-xs ml-0.5 font-bold text-slate-600 dark:text-slate-300">萬</span></div>
                                     </div>
                                     <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 md:hidden"></div>
                                     <div className="text-right md:text-center flex-1 md:w-full md:pt-1 flex flex-col md:block">
-                                        <span className="text-sm md:text-xs text-red-600 dark:text-red-400 font-bold tracking-widest mb-1 md:mb-0.5">月息</span> 
+                                        <span className="text-sm md:text-xs text-red-600 dark:text-red-400 font-bold tracking-widest mb-1 md:mb-0">月息</span> 
                                         <div className="text-red-700 dark:text-red-400 font-black text-lg md:text-base lg:text-lg leading-tight whitespace-nowrap">{pos.currency === 'JPY' ? '¥' : '$'}{pos.monthlyCoupon.toLocaleString()}</div>
                                     </div>
                                 </div>
                             </div>
                           </td>
 
-                          <td className="block md:table-cell px-4 py-4 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-auto"> 
+                          {/* 🌟 電腦版第三欄限制寬度 */}
+                          <td className="block md:table-cell px-4 py-4 md:py-2 align-middle border-b md:border-0 border-slate-100 dark:border-slate-700 w-full md:w-[45%]"> 
                             <div className="flex flex-col gap-1 w-full min-w-0"> 
                               <span className="md:hidden text-base font-bold text-slate-500 dark:text-slate-200 mb-2">連結標的情況</span>
                               
-                              {/* 🌟 修改點 1：將 KO 與 履約 改為 text-center 置中，這會讓 KO 往左靠，填補空白 */}
                               <div className="flex items-center text-[12px] sm:text-sm text-slate-400 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700 pb-2 md:pb-1 mb-2 md:mb-1 px-1 whitespace-nowrap">
                                   <div className="w-[28%] sm:w-[25%] text-left">標的</div>
                                   <div className="hidden sm:block sm:w-[15%] text-right">現價</div>
@@ -712,7 +755,6 @@ const App = () => {
                                     </div>
                                     <span className={`hidden sm:block sm:w-[15%] font-mono font-bold text-right text-xs md:text-sm whitespace-nowrap px-0.5 ${u.currentPrice < u.entryPrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{formatStockPrice(u.currentPrice, pos.currency)}</span>
                                     
-                                    {/* 🌟 修改點 2：放大至 15px (text-[15px]) 且加粗，並配合上方的置中設定 */}
                                     <span className="w-[24%] sm:w-[20%] font-mono font-bold text-red-700 dark:text-red-400 text-center sm:text-right text-[15px] md:text-sm whitespace-nowrap">{formatStockPrice(u.koPrice, pos.currency)}</span>
                                     <span className="w-[24%] sm:w-[20%] font-mono text-slate-500 dark:text-slate-300 text-center sm:text-right text-[15px] md:text-sm whitespace-nowrap">{formatStockPrice(u.strikePrice, pos.currency)}</span>
                                     <span className="w-[24%] sm:w-[20%] font-mono font-bold text-green-700 dark:text-green-400 text-right text-[15px] md:text-sm whitespace-nowrap pl-0.5">{formatStockPrice(u.kiPrice, pos.currency)}</span>
@@ -722,7 +764,7 @@ const App = () => {
                             </div>
                           </td>
 
-                          <td className="block md:table-cell px-4 py-4 md:py-2 text-right align-middle bg-slate-50 dark:bg-transparent w-full md:w-auto"> 
+                          <td className="block md:table-cell px-4 py-4 md:py-2 text-right align-middle bg-slate-50 dark:bg-transparent w-full md:w-[10%]"> 
                             {!isGuestMode && (
                                 <div className="flex md:flex-col items-center justify-end gap-3 md:gap-2 md:h-full w-full md:w-auto">
                                     <button onClick={() => handleOpenEditModal(pos)} className="flex items-center justify-center gap-1.5 md:gap-1 text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 px-4 py-3 md:p-2 border md:border-0 border-slate-300 dark:border-slate-600 bg-white dark:bg-transparent hover:bg-blue-50 dark:hover:bg-slate-700 rounded-lg md:rounded-full transition text-sm md:text-xs font-bold flex-1 md:flex-none" title="編輯部位"><Pencil size={16} className="md:w-[14px] md:h-[14px]"/> <span className="md:hidden">編輯</span></button>
