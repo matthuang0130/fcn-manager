@@ -52,13 +52,25 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
           </div>
           
           <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-             <div><label className="text-sm font-bold text-slate-500 dark:text-slate-300">KI%</label><input type="number" step="0.1" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded px-2 py-1 text-sm font-bold text-red-600 dark:text-red-400 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.kiLevel} onChange={e=>setNewPosition({...newPosition, kiLevel:e.target.value})}/></div>
-             <div><label className="text-sm font-bold text-slate-500 dark:text-slate-300">Strike%</label><input type="number" step="0.1" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded px-2 py-1 text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.strikeLevel} onChange={e=>setNewPosition({...newPosition, strikeLevel:e.target.value})}/></div>
-             <div><label className="text-sm font-bold text-slate-500 dark:text-slate-300">首期 KO%</label><input type="number" step="0.1" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded px-2 py-1 text-sm font-bold text-green-600 dark:text-green-400 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.koLevel} onChange={e=>setNewPosition({...newPosition, koLevel:e.target.value})}/></div>
+             <div>
+                {/* 🌟 AKI / EKI 切換開關在這裡！ */}
+                <label className="text-sm font-bold text-slate-500 dark:text-slate-300 flex justify-between items-center mb-0.5">
+                    <span>KI%</span>
+                    <select className="text-[10px] bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded px-1 py-0.5 outline-none cursor-pointer"
+                        value={newPosition.kiType || 'AKI'} onChange={e => setNewPosition({...newPosition, kiType: e.target.value})}>
+                        <option value="AKI">AKI(期間)</option>
+                        <option value="EKI">EKI(到期)</option>
+                    </select>
+                </label>
+                <input type="number" step="0.1" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded px-2 py-1 text-sm font-bold text-red-600 dark:text-red-400 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.kiLevel} onChange={e=>setNewPosition({...newPosition, kiLevel:e.target.value})}/>
+             </div>
+             
+             <div><label className="text-sm font-bold text-slate-500 dark:text-slate-300 flex items-center mb-0.5">Strike%</label><input type="number" step="0.1" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded px-2 py-1 text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.strikeLevel} onChange={e=>setNewPosition({...newPosition, strikeLevel:e.target.value})}/></div>
+             <div><label className="text-sm font-bold text-slate-500 dark:text-slate-300 flex items-center mb-0.5">首期 KO%</label><input type="number" step="0.1" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded px-2 py-1 text-sm font-bold text-green-600 dark:text-green-400 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.koLevel} onChange={e=>setNewPosition({...newPosition, koLevel:e.target.value})}/></div>
              
              <div className="flex gap-2">
                  <div className="flex-1">
-                     <label className="text-sm font-bold text-slate-500 dark:text-slate-300">觀察頻率</label>
+                     <label className="text-sm font-bold text-slate-500 dark:text-slate-300 flex items-center mb-0.5">觀察頻率</label>
                      <select className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded px-2 py-1 text-sm font-bold text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.koType || "Daily"} onChange={e=>setNewPosition({...newPosition, koType:e.target.value})}>
                         <option value="Daily">天天觀察</option>
                         <option value="Monthly">每月遞減 (自動推算)</option>
@@ -67,7 +79,7 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
                  </div>
                  {newPosition.koType === 'Monthly' && (
                      <div className="w-16">
-                         <label className="text-sm font-bold text-slate-500 dark:text-slate-300">降幅%</label>
+                         <label className="text-sm font-bold text-slate-500 dark:text-slate-300 flex items-center mb-0.5">降幅%</label>
                          <input type="number" step="0.1" className="w-full border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-sm font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.stepDownRate !== undefined ? newPosition.stepDownRate : 5} onChange={e=>setNewPosition({...newPosition, stepDownRate:e.target.value})}/>
                      </div>
                  )}
@@ -107,7 +119,6 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
                 <label className="text-sm text-slate-500 dark:text-slate-300">首次配息日</label>
                 <input type="date" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.firstCouponDate || ""} onChange={e=>setNewPosition({...newPosition, firstCouponDate:e.target.value})}/>
              </div>
-             {/* 🌟 這裡改成「最後觀察日」 */}
              <div><label className="text-sm text-slate-500 dark:text-slate-300">最後觀察日</label><input type="date" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.maturityDate || ""} onChange={e=>setNewPosition({...newPosition, maturityDate:e.target.value})}/></div>
              <div><label className="text-sm text-slate-500 dark:text-slate-300">存續期</label><input type="text" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={newPosition.tenor || ""} onChange={e=>setNewPosition({...newPosition, tenor:e.target.value})}/></div>
           </div>
