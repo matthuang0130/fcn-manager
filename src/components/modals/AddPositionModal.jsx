@@ -53,7 +53,6 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
           
           <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
              <div>
-                {/* 🌟 AKI / EKI 切換開關在這裡！ */}
                 <label className="text-sm font-bold text-slate-500 dark:text-slate-300 flex justify-between items-center mb-0.5">
                     <span>KI%</span>
                     <select className="text-[10px] bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded px-1 py-0.5 outline-none cursor-pointer"
@@ -132,6 +131,17 @@ export const AddPositionModal = ({ isOpen, onClose, onAdd, newPosition, setNewPo
                 <button type="button" onClick={()=>removeU(u.id)} className="text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"><Trash2 size={16}/></button>
               </div>
             ))}
+          </div>
+
+          {/* 🌟 新增：手動結算狀態選項 (預設為 Active) */}
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+             <label className="block text-sm font-bold text-slate-500 dark:text-slate-300 mb-1">部位結算狀態</label>
+             <select className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                value={newPosition.status || 'Active'} onChange={e => setNewPosition({...newPosition, status: e.target.value})}>
+                <option value="Active">🟢 觀察中 (Active)</option>
+                <option value="Matured">🏁 安全結算出場 (Matured)</option>
+                <option value="Delivered">📦 實物交割接股票 (Delivered)</option>
+             </select>
           </div>
 
           <button type="submit" className="w-full bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white py-3 rounded-lg font-bold text-sm shadow-md active:scale-95 transition">
