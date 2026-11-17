@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, TrendingUp, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, Eye, Coins, User, Briefcase, Check, FileText, Pencil, Lock, Unlock, Settings as SettingsIcon, Share2, ArrowRightLeft, Loader, Moon, Sun, Package } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, AlertTriangle, DollarSign, Activity, ChevronDown, RefreshCw, X, Clock, Edit3, Eye, Coins, User, Briefcase, Check, FileText, Pencil, Lock, Unlock, Settings as SettingsIcon, Share2, ArrowRightLeft, Loader, Moon, Sun, Package, Archive } from 'lucide-react';
 
 import { DEFAULT_CLIENTS, INITIAL_POSITIONS, DEFAULT_MARKET_PRICES, DEFAULT_FORM_STATE } from './utils/constants';
 import { normalizeTicker, formatToWan } from './utils/helpers';
@@ -33,6 +33,9 @@ const App = () => {
   const [savedPassword, setSavedPassword] = useState("");
   const [isUnlocked, setIsUnlocked] = useState(true); 
   const [lockedTickers, setLockedTickers] = useState([]);
+
+  // 🌟 新增：用來控制清單要顯示「活躍」還是「歷史」的狀態
+  const [listTab, setListTab] = useState('active'); 
 
   const [currentShareData, setCurrentShareData] = useState({ url: '', name: '' }); 
   const [pendingAction, setPendingAction] = useState(null);
@@ -429,7 +432,7 @@ const App = () => {
     let deliveryInfo = null;
 
     if (currentStatus === 'Matured') {
-        riskStatus = "安全結算 (Matured)"; 
+        riskStatus = "安全結算出場 (Matured)"; 
         statusColor = "bg-green-600 text-white font-bold border border-green-700 shadow-sm";
     } 
     else if (currentStatus === 'Delivered' && laggard) {
@@ -447,7 +450,7 @@ const App = () => {
             totalInterestEarned: lifetimeInterest, 
             realBreakEvenPrice: realBreakEvenPrice,
             currentMarketValue: currentMarketValue,
-            floatingPnL: currentMarketValue - netCapitalCost,
+            floatingPnL: currentMarketValue - netCapitalCost, 
             floatingPnLPercent: ((currentMarketValue - netCapitalCost) / netCapitalCost) * 100,
             pureStockPnL: currentMarketValue - pos.nominal 
         };
@@ -504,6 +507,15 @@ const App = () => {
       koCount: activePositions.filter(p => p.riskStatus.includes("KO")).length
     };
   }, [processedPositions]);
+
+  // 🌟 將處理完的列表根據「分頁(Tab)」進行過濾
+  const displayPositions = useMemo(() => {
+      if (listTab === 'active') {
+          return processedPositions.filter(p => p.status !== 'Matured' && p.status !== 'Delivered');
+      } else {
+          return processedPositions.filter(p => p.status === 'Matured' || p.status === 'Delivered');
+      }
+  }, [processedPositions, listTab]);
 
   const handleSyncLivePrices = async () => {
     setIsLoading(true);
@@ -762,9 +774,30 @@ const App = () => {
           </div>
           
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors duration-300">
-            <div className="px-4 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex justify-between items-center">
-              <div className="flex items-center gap-2"><Briefcase size={18} className="text-slate-400 dark:text-slate-300"/><h2 className="font-bold text-slate-700 dark:text-slate-100 text-base md:text-sm">{activeClient.name} 的部位</h2></div>
-              <span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 bg-white dark:bg-slate-700 border dark:border-slate-600 px-3 py-1 md:py-0.5 rounded-full">{currentClientPositions.length} 筆資料</span>
+            {/* 🌟 核心升級：雙切換分頁選單 */}
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Briefcase size={18} className="text-slate-400 dark:text-slate-300"/>
+                <h2 className="font-bold text-slate-700 dark:text-slate-100 text-base md:text-sm">{activeClient.name} 的部位</h2>
+                <span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 bg-white dark:bg-slate-700 border dark:border-slate-600 px-2 py-0.5 rounded-full ml-1">
+                  {displayPositions.length}
+                </span>
+              </div>
+              
+              <div className="flex bg-slate-200/50 dark:bg-slate-900/50 p-1 rounded-lg w-full sm:w-auto">
+                <button 
+                    onClick={() => setListTab('active')} 
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-sm font-bold rounded-md transition-colors ${listTab === 'active' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                >
+                    活躍中
+                </button>
+                <button 
+                    onClick={() => setListTab('archived')} 
+                    className={`flex-1 sm:flex-none px-4 py-1.5 text-sm font-bold rounded-md transition-colors flex items-center justify-center gap-1.5 ${listTab === 'archived' ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                >
+                    <Archive size={14}/>歷史結算
+                </button>
+              </div>
             </div>
             
             <div className="w-full p-3 md:p-0 overflow-x-auto">
@@ -778,7 +811,7 @@ const App = () => {
                   </tr>
                 </thead>
                 <tbody className="block md:table-row-group md:divide-y md:divide-slate-100 dark:md:divide-slate-700/50">
-                  {processedPositions.map((pos) => {
+                  {displayPositions.map((pos) => {
                       const isDelivered = pos.status === 'Delivered';
                       const rowClass = pos.isProductKO ? "bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-900/60 md:border-l-4 md:border-l-red-500" 
                                      : isDelivered ? "bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-900/60 md:border-l-4 md:border-l-purple-500"
@@ -925,7 +958,15 @@ const App = () => {
                         </tr>
                       );
                   })}
-                  {processedPositions.length === 0 && (<tr className="block md:table-row"><td colSpan="6" className="block md:table-cell px-6 py-12 text-center text-slate-400 dark:text-slate-300 w-full">目前沒有活躍部位，請點擊右上角「新增」</td></tr>)}
+                  
+                  {/* 🌟 當該分頁沒有資料時的提示 */}
+                  {displayPositions.length === 0 && (
+                      <tr className="block md:table-row">
+                          <td colSpan="6" className="block md:table-cell px-6 py-12 text-center text-slate-400 dark:text-slate-300 w-full">
+                              {listTab === 'active' ? '目前沒有活躍部位，請點擊右上角「新增」' : '目前沒有已結算的歷史部位'}
+                          </td>
+                      </tr>
+                  )}
                 </tbody>
               </table>
             </div>
