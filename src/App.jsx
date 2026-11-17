@@ -376,16 +376,21 @@ const App = () => {
   const handleUnlock = (inputPwd) => { if (inputPwd === savedPassword) { setIsUnlocked(true); setIsPasswordPromptOpen(false); if (pendingAction) { pendingAction(); setPendingAction(null); } } else { alert("密碼錯誤"); } };
   const handleManualLock = () => { if(savedPassword) { setIsUnlocked(false); setViewMode('landing'); } };
 
-  // 🌟 計算已存續月數與領息總額的輔助工具
+  // 🌟 修正後的精確利息期數計算：改採計算日距並四捨五入
   const calculateMonthsPassed = (startStr, endStr) => {
       if (!startStr || !endStr) return 0;
       const d1 = new Date(startStr);
       const d2 = new Date(endStr);
       if (d1 > d2) return 0;
-      let months = (d2.getFullYear() - d1.getFullYear()) * 12;
-      months -= d1.getMonth();
-      months += d2.getMonth();
-      return months <= 0 ? 1 : months; 
+      
+      // 算出兩個日期之間的「實際天數」
+      const diffTime = Math.abs(d2 - d1);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      
+      // FCN 一個月約 30.44 天，四捨五入求出經過了「幾個滿月」
+      // 最後加上 1，代表包含了首尾兩端的完整配息期數
+      const passedMonths = Math.round(diffDays / 30.44);
+      return passedMonths + 1; 
   };
 
   const calculateRisk = (pos) => {
@@ -416,9 +421,8 @@ const App = () => {
     
     const isMatured = pos.maturityDate && todayRenderStr >= pos.maturityDate;
     const kiType = pos.kiType || 'AKI';
-    const currentStatus = pos.status || 'Active'; // 讀取使用者手動標記的狀態
+    const currentStatus = pos.status || 'Active';
 
-    // 🌟 結算交付狀態判斷邏輯
     let deliveryInfo = null;
 
     if (currentStatus === 'Matured') {
@@ -429,12 +433,12 @@ const App = () => {
         riskStatus = "📦 實物交割 (Delivered)"; 
         statusColor = "bg-purple-600 text-white font-bold border border-purple-700 shadow-sm";
         
-        // 🌟 自動精算真實成本與股數
+        // 🌟 匯入更準確的利息期數精算
         const passedMonths = calculateMonthsPassed(pos.firstCouponDate || pos.koObservationStartDate, pos.maturityDate || todayRenderStr);
         const totalInterestEarned = monthlyCoupon * passedMonths;
-        const netCapitalCost = pos.nominal - totalInterestEarned; // 扣除已領利息後的真金白銀成本
-        const shareCount = pos.nominal / laggard.strikePrice; // 原本金換算股數
-        const realBreakEvenPrice = netCapitalCost / shareCount; // 真實持有成本
+        const netCapitalCost = pos.nominal - totalInterestEarned; 
+        const shareCount = pos.nominal / laggard.strikePrice; 
+        const realBreakEvenPrice = netCapitalCost / shareCount; 
 
         deliveryInfo = {
             targetTicker: laggard.ticker,
@@ -538,7 +542,7 @@ const App = () => {
       koLevel: parseFloat(formPosition.koLevel), kiLevel: parseFloat(formPosition.kiLevel), 
       kiType: formPosition.kiType || "AKI", 
       strikeLevel: parseFloat(formPosition.strikeLevel), koType: formPosition.koType || "Daily", stepDownRate: parseFloat(formPosition.stepDownRate || 0), 
-      status: formPosition.status || "Active", // 🌟 儲存結算狀態
+      status: formPosition.status || "Active", 
       underlyings: validUnderlyings, customSchedule: validCustomSchedule
     };
     if (editId) setAllPositions(prev => prev.map(p => p.id === editId ? { ...entryData, id: editId } : p));
@@ -570,7 +574,7 @@ const App = () => {
           kiType: pos.kiType || "AKI", 
           strikeLevel: pos.strikeLevel || 100, strikeDate: pos.strikeDate || "", 
           koObservationStartDate: pos.koObservationStartDate || "", firstCouponDate: pos.firstCouponDate || "", tenor: pos.tenor || "", maturityDate: pos.maturityDate || "", koType: pos.koType || "Daily", stepDownRate: pos.stepDownRate || 0, manualNextObsDate: pos.manualNextObsDate || "",
-          status: pos.status || "Active", // 🌟 載入結算狀態
+          status: pos.status || "Active", 
           customSchedule: (pos.customSchedule || []).map(s => ({ ...s, id: s.id || Date.now() + Math.random() }))
       }); 
       setFormUnderlyings((pos.underlyings || []).map((u, idx) => ({ ticker: u.ticker || "", entryPrice: u.entryPrice || 0, memoryKO: u.memoryKO || false, id: Date.now() + idx }))); 
@@ -718,7 +722,6 @@ const App = () => {
                                <span className={`inline-flex items-center px-2 py-1 md:py-0.5 rounded text-sm md:text-xs font-bold shrink-0 mt-1 sm:mt-0 ${pos.statusColor}`}>{pos.riskStatus}</span>
                             </div>
                             
-                            {/* 🌟 實物交割資訊卡 */}
                             {isDelivered && pos.deliveryInfo ? (
                                 <div className="mt-3 p-3 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/50 rounded-lg shadow-sm">
                                     <div className="flex items-center gap-1.5 text-purple-700 dark:text-purple-400 font-bold text-sm mb-2 border-b border-purple-100 dark:border-purple-900/50 pb-1"><Package size={16}/> 現股轉換與成本盤點</div>
@@ -752,6 +755,12 @@ const App = () => {
                                                     {pos.firstCouponDate === pos.nextCouponDateStr ? '首配' : '配息'}: {pos.nextCouponDateStr}
                                                     <span className="text-xs md:text-[10px] opacity-75 font-normal ml-0.5">(+3~5日入帳)</span>
                                                 </span>
+                                            )}
+
+                                            {pos.koType !== 'Daily' && (
+                                                <div onClick={() => handleOverrideObsDate(pos.id, nextObsStr, pos.currentDynamicKoLevel)} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 px-2 py-1 md:px-1.5 md:py-0.5 rounded cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-200 transition" title="點擊手動修改下次觀察日與門檻">
+                                                    <span className="font-bold text-slate-700 dark:text-slate-200">下次: {nextObsStr}</span>{!isGuestMode && <Pencil size={12} className="dark:text-slate-300"/>}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -802,7 +811,6 @@ const App = () => {
 
                               {(pos.underlyingDetails || []).map((u) => {
                                 const isTickerLocked = lockedTickers && lockedTickers.includes(u.ticker);
-                                // 接股票時，弱勢股高亮
                                 const isLaggard = isDelivered && pos.deliveryInfo && pos.deliveryInfo.targetTicker === u.ticker;
 
                                 return (
