@@ -376,19 +376,14 @@ const App = () => {
   const handleUnlock = (inputPwd) => { if (inputPwd === savedPassword) { setIsUnlocked(true); setIsPasswordPromptOpen(false); if (pendingAction) { pendingAction(); setPendingAction(null); } } else { alert("密碼錯誤"); } };
   const handleManualLock = () => { if(savedPassword) { setIsUnlocked(false); setViewMode('landing'); } };
 
-  // 🌟 修正後的精確利息期數計算：改採計算日距並四捨五入
-  const calculateMonthsPassed = (startStr, endStr) => {
+  const calculateTotalMonthsPassed = (startStr, endStr) => {
       if (!startStr || !endStr) return 0;
       const d1 = new Date(startStr);
       const d2 = new Date(endStr);
       if (d1 > d2) return 0;
       
-      // 算出兩個日期之間的「實際天數」
       const diffTime = Math.abs(d2 - d1);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-      
-      // FCN 一個月約 30.44 天，四捨五入求出經過了「幾個滿月」
-      // 最後加上 1，代表包含了首尾兩端的完整配息期數
       const passedMonths = Math.round(diffDays / 30.44);
       return passedMonths + 1; 
   };
@@ -415,14 +410,22 @@ const App = () => {
       if (performance < minPerf) { minPerf = performance; laggard = detail; }
       return detail;
     });
+    
     const monthlyCoupon = Math.round((pos.nominal * (pos.couponRate / 100)) / 12);
-    
-    let riskStatus = "觀察中", statusColor = "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800/50"; 
-    
+    const currentStatus = pos.status || 'Active';
     const isMatured = pos.maturityDate && todayRenderStr >= pos.maturityDate;
     const kiType = pos.kiType || 'AKI';
-    const currentStatus = pos.status || 'Active';
 
+    let effectiveEndDate = todayRenderStr;
+    if (['Matured', 'Delivered'].includes(currentStatus) && pos.maturityDate && pos.maturityDate < todayRenderStr) {
+        effectiveEndDate = pos.maturityDate;
+    } else if (pos.maturityDate && pos.maturityDate < todayRenderStr) {
+        effectiveEndDate = pos.maturityDate; 
+    }
+    const lifetimeMonths = calculateTotalMonthsPassed(pos.firstCouponDate || pos.koObservationStartDate, effectiveEndDate);
+    const lifetimeInterest = monthlyCoupon * lifetimeMonths;
+    
+    let riskStatus = "觀察中", statusColor = "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800/50"; 
     let deliveryInfo = null;
 
     if (currentStatus === 'Matured') {
@@ -433,21 +436,20 @@ const App = () => {
         riskStatus = "📦 實物交割 (Delivered)"; 
         statusColor = "bg-purple-600 text-white font-bold border border-purple-700 shadow-sm";
         
-        // 🌟 匯入更準確的利息期數精算
-        const passedMonths = calculateMonthsPassed(pos.firstCouponDate || pos.koObservationStartDate, pos.maturityDate || todayRenderStr);
-        const totalInterestEarned = monthlyCoupon * passedMonths;
-        const netCapitalCost = pos.nominal - totalInterestEarned; 
+        const netCapitalCost = pos.nominal - lifetimeInterest; 
         const shareCount = pos.nominal / laggard.strikePrice; 
         const realBreakEvenPrice = netCapitalCost / shareCount; 
+        const currentMarketValue = shareCount * laggard.currentPrice;
 
         deliveryInfo = {
             targetTicker: laggard.ticker,
             shareCount: shareCount,
-            totalInterestEarned: totalInterestEarned,
+            totalInterestEarned: lifetimeInterest, 
             realBreakEvenPrice: realBreakEvenPrice,
-            currentMarketValue: shareCount * laggard.currentPrice,
-            floatingPnL: (shareCount * laggard.currentPrice) - netCapitalCost,
-            floatingPnLPercent: (((shareCount * laggard.currentPrice) - netCapitalCost) / netCapitalCost) * 100
+            currentMarketValue: currentMarketValue,
+            floatingPnL: currentMarketValue - netCapitalCost,
+            floatingPnLPercent: ((currentMarketValue - netCapitalCost) / netCapitalCost) * 100,
+            pureStockPnL: currentMarketValue - pos.nominal 
         };
     }
     else if (allTouchedKO) { 
@@ -474,19 +476,30 @@ const App = () => {
         }
     }
     
-    return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon, isProductKO: allTouchedKO, currentDynamicKoLevel, nextCouponDateStr, deliveryInfo };
+    return { ...pos, underlyingDetails, laggard, riskStatus, statusColor, monthlyCoupon, lifetimeInterest, isProductKO: allTouchedKO, currentDynamicKoLevel, nextCouponDateStr, deliveryInfo };
   };
 
   const processedPositions = useMemo(() => currentClientPositions.map(calculateRisk), [currentClientPositions, marketPrices]);
   const summary = useMemo(() => {
-    // 總覽排除已經結算或交割的部位
+    const usdAll = processedPositions.filter(p => p.currency === 'USD');
+    const jpyAll = processedPositions.filter(p => p.currency === 'JPY');
+    
     const activePositions = processedPositions.filter(p => !['Matured', 'Delivered'].includes(p.status));
-    const usd = activePositions.filter(p => p.currency === 'USD');
-    const jpy = activePositions.filter(p => p.currency === 'JPY');
-    const sum = (list, key) => list.reduce((acc, curr) => acc + curr[key], 0);
+    const usdActive = activePositions.filter(p => p.currency === 'USD');
+    const jpyActive = activePositions.filter(p => p.currency === 'JPY');
+
+    const calcStats = (allList, activeList) => {
+        const nominal = activeList.reduce((sum, p) => sum + (p.nominal || 0), 0);
+        const monthly = activeList.reduce((sum, p) => sum + (p.monthlyCoupon || 0), 0);
+        const lifetimeInterest = allList.reduce((sum, p) => sum + (p.lifetimeInterest || 0), 0);
+        const pureStockPnL = allList.reduce((sum, p) => sum + (p.deliveryInfo ? p.deliveryInfo.pureStockPnL : 0), 0);
+        const netPnL = lifetimeInterest + pureStockPnL;
+        return { nominal, monthly, lifetimeInterest, pureStockPnL, netPnL };
+    };
+
     return {
-      usd: { nominal: sum(usd, 'nominal'), monthly: sum(usd, 'monthlyCoupon') },
-      jpy: { nominal: sum(jpy, 'nominal'), monthly: sum(jpy, 'monthlyCoupon') },
+      usd: calcStats(usdAll, usdActive),
+      jpy: calcStats(jpyAll, jpyActive),
       kiCount: activePositions.filter(p => p.riskStatus.includes("KI")).length,
       koCount: activePositions.filter(p => p.riskStatus.includes("KO")).length
     };
@@ -651,35 +664,98 @@ const App = () => {
 
       <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-9 space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 group-hover:opacity-20 transition-opacity"><DollarSign size={48} className="text-slate-400"/></div>
-                <div className="relative z-10">
-                    <div className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-1">USD (活躍資金)</div>
-                    <div className="flex flex-col gap-1">
-                        <div className="flex items-baseline gap-1"><span className="text-3xl md:text-2xl font-black text-slate-800 dark:text-white">${(summary.usd.nominal/10000).toFixed(0)}</span><span className="text-base md:text-sm font-bold text-slate-600 dark:text-slate-200">萬</span><span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
-                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={14} strokeWidth={4} /><span className="text-xl md:text-lg">${summary.usd.monthly.toLocaleString()}</span><span className="text-sm md:text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/40 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <div className="col-span-1 md:col-span-2 lg:col-span-1 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col h-full">
+                <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5"><DollarSign size={48} className="text-slate-400"/></div>
+                <div className="relative z-10 flex flex-col flex-1">
+                    <div className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-3 flex justify-between items-center">
+                        <span>USD 投資總績效</span>
+                        <span className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded font-bold">全期間累計</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-end mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">
+                        <div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">活躍本金 (Active)</div>
+                            <div className="text-xl md:text-lg font-black text-slate-800 dark:text-white">${(summary.usd.nominal/10000).toFixed(0)}萬</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">月現金流</div>
+                            <div className="text-base md:text-sm font-bold text-red-600 dark:text-red-400">+$ {summary.usd.monthly.toLocaleString()}</div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-1 mt-auto">
+                        <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-500 dark:text-slate-400">歷史總領息</span>
+                            <span className="font-bold text-green-600 dark:text-green-400">+$ {summary.usd.lifetimeInterest.toLocaleString()}</span>
+                        </div>
+                        {summary.usd.pureStockPnL !== 0 && (
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500 dark:text-slate-400">現股帳面損益</span>
+                                <span className={`font-bold ${summary.usd.pureStockPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {summary.usd.pureStockPnL >= 0 ? '+' : ''}$ {Math.round(summary.usd.pureStockPnL).toLocaleString()}
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700 mt-2">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">真實總淨利</span>
+                            <span className={`text-lg font-black ${summary.usd.netPnL >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {summary.usd.netPnL >= 0 ? '+' : ''}$ {Math.round(summary.usd.netPnL).toLocaleString()}
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 group-hover:opacity-20 transition-opacity"><Coins size={48} className="text-slate-400"/></div>
-                <div className="relative z-10">
-                    <div className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-1">JPY (活躍資金)</div>
-                     <div className="flex flex-col gap-1">
-                        <div className="flex items-baseline gap-1"><span className="text-3xl md:text-2xl font-black text-slate-800 dark:text-white">¥{(summary.jpy.nominal/10000).toFixed(0)}</span><span className="text-base md:text-sm font-bold text-slate-600 dark:text-slate-200">萬</span><span className="text-sm md:text-xs text-slate-400 dark:text-slate-300 ml-1 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">本金</span></div>
-                        <div className="flex items-center gap-1 text-red-700 dark:text-red-400 font-bold"><Plus size={14} strokeWidth={4} /><span className="text-xl md:text-lg">¥{summary.jpy.monthly.toLocaleString()}</span><span className="text-sm md:text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/40 px-1.5 py-0.5 rounded ml-1 border border-red-100 dark:border-red-900/50">月息</span></div>
+            <div className="col-span-1 md:col-span-2 lg:col-span-1 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col h-full">
+                <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5"><Coins size={48} className="text-slate-400"/></div>
+                <div className="relative z-10 flex flex-col flex-1">
+                    <div className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider mb-3 flex justify-between items-center">
+                        <span>JPY 投資總績效</span>
+                        <span className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded font-bold">全期間累計</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-end mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">
+                        <div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">活躍本金 (Active)</div>
+                            <div className="text-xl md:text-lg font-black text-slate-800 dark:text-white">¥{(summary.jpy.nominal/10000).toFixed(0)}萬</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">月現金流</div>
+                            <div className="text-base md:text-sm font-bold text-red-600 dark:text-red-400">+¥ {summary.jpy.monthly.toLocaleString()}</div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-1 mt-auto">
+                        <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-500 dark:text-slate-400">歷史總領息</span>
+                            <span className="font-bold text-green-600 dark:text-green-400">+¥ {summary.jpy.lifetimeInterest.toLocaleString()}</span>
+                        </div>
+                        {summary.jpy.pureStockPnL !== 0 && (
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500 dark:text-slate-400">現股帳面損益</span>
+                                <span className={`font-bold ${summary.jpy.pureStockPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {summary.jpy.pureStockPnL >= 0 ? '+' : ''}¥ {Math.round(summary.jpy.pureStockPnL).toLocaleString()}
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700 mt-2">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">真實總淨利</span>
+                            <span className={`text-lg font-black ${summary.jpy.netPnL >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {summary.jpy.netPnL >= 0 ? '+' : ''}¥ {Math.round(summary.jpy.netPnL).toLocaleString()}
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.koCount > 0 ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800/60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+            <div className={`col-span-1 md:col-span-2 lg:col-span-1 p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.koCount > 0 ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800/60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
               <span className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider">KO 機會</span>
               <div className="flex items-end justify-between mt-2"><span className="text-4xl md:text-3xl font-black text-red-600 dark:text-red-400">{summary.koCount}</span><TrendingUp size={28} className="text-red-400 dark:text-red-500 mb-1"/></div>
             </div>
             
-            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.kiCount > 0 ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800/60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+            <div className={`col-span-1 md:col-span-2 lg:col-span-1 p-4 rounded-2xl border shadow-sm flex flex-col justify-between transition-all ${summary.kiCount > 0 ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800/60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
               <span className="text-base md:text-sm font-bold text-slate-500 dark:text-slate-200 uppercase tracking-wider">KI 風險</span>
               <div className="flex items-end justify-between mt-2"><span className="text-4xl md:text-3xl font-black text-green-600 dark:text-green-400">{summary.kiCount}</span><AlertTriangle size={28} className="text-green-400 dark:text-green-500 mb-1"/></div>
             </div>
